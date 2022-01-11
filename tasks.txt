@@ -1,0 +1,20 @@
+
+USER PORT = 60000
+SERVER PORT = 60000
+
+APP (USER)
+
+- parsing da mensagem
+    T - LOC -> testar localizacao com a propria actual (responde com TOK se estiver prox -> fazer conta)
+    T - TOK -> responde com RTOK
+    T - RTOK -> (guarda)
+    M - COD -> envia POS pro servidor (IP,port -> ja sabemos a priori)
+    M - CON -> testa com ultimos tokens
+
+M - implementar while que espera comandos de mudanca de localizacao
+    - mandar LOC para todos os ips de todas as interfaces
+
+G - SERVER
+
+
+T - SNS
