@@ -6,6 +6,9 @@ import threading
 import comm
 import random
 
+import udp_server
+import udp_client
+
 # RECEBE:
 
 # do SNS quando user esta positivo pra covid19
@@ -96,15 +99,23 @@ class RecvToken:
             self.location = locationInfo[:size - 2]
 
 class User:
-    def __init__(self, name, actualToken, sentTokens, recvTokens):
+    def __init__(self, name, actualToken, sentTokens, recvTokens, latitude, longitude):
         self.name = name
         self.actualToken = actualToken
         self.sentTokens = sentTokens
         self.recvTokens = recvTokens
+        self.latitude = latitude
+        self.longitude = longitude
+
     
 def usage():
     sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
     sys.exit(1)
+
+def set_loc(user):
+    print("Set your actual location")
+    user.latitude = input("Latitude: ")
+    user.longitude = input("Longitude: ")
 
 def send_loc(lat,long,other_port):
 
@@ -122,8 +133,9 @@ def send_loc(lat,long,other_port):
 
     while True:
         from time import sleep
-
-        client.send(f"LOC:{lat}:{long}:\n".encode("utf-8"))
+        s = "LOC:" + str(lat) + ":" + str(long) + ":\n"
+        se = s.encode("utf-8")
+        client.send(se)
         sleep(1)
 
 if __name__ == '__main__':
@@ -139,6 +151,8 @@ if __name__ == '__main__':
     print("Helcome to the app \'Covid Contacts Trace\'")
     sentTokens = {}
     recvTokens = {}
+    latitude = 0
+    longitude = 0
     if len(sys.argv) == 1:
         name = input("Username: ")
     
@@ -147,22 +161,54 @@ if __name__ == '__main__':
         pass
     
     #getToken()
-    user = User(name, 0, sentTokens, recvTokens)
+    user = User(name, 0, sentTokens, recvTokens, latitude, longitude)
     
     own_port = int(input("own port: "))
     other_port = int(input("other port: "))
+
+    own_port_b = int(input("own port for broadcast: "))
+    other_port_b = int(input("other port for broadcast: "))
     # listen should run in background
     t1 = threading.Thread(target = listen, args = (own_port,) )
     t1.start()
+    t2 = threading.Thread(target = udp_client.recv_loc, args = (own_port_b,) )
+    t2.start()
 
-    latitude = input("Latitude: ")
-    longitude = input("Longitude: ")
+    set_loc(user)
+    udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
+    command = 0
+    while command != 6:
+        print("-=[ \'Covid Contacts Trace\' Menu ]=-")
+        print("1 - Set user name")
+        print("2 - Set actual loaction")
+        print("3 - Show actual location")
+        print("4 - Insert SNS code")
+        print("5 - Check codes sent by SNS")
+        print("6 - Quit")
+        command = int(input().split(' ')[0])
+
+        if command < 1 or command > 6:
+            print("Invalid command")
+        elif command == 1:
+            user.name = input("Insert new name: ")
+        elif command == 2:
+            set_loc(user)
+            udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
+        elif command == 3:
+            print("Actual location")
+            print("Latitude: " + str(user.latitude))
+            print("Longitude: " + str(user.longitude))
+        elif command == 4:
+            pass
+        elif command == 5:
+            pass
+        
     #recvtkn = RecvToken(10, latitude, longitude)
     #print(recvtkn.token)
     #print(recvtkn.location)
 
-    send_loc(latitude, longitude, other_port)
+    #send_loc(latitude, longitude, other_port)
 
 
 
@@ -174,3 +220,4 @@ if __name__ == '__main__':
         #move:<lat>:<long>
 
     t1.join()
+    te.join()
