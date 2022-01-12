@@ -9,41 +9,182 @@ import random
 import udp_server
 import udp_client
 
-# RECEBE:
+import datetime
 
-# do SNS quando user esta positivo pra covid19
-# COD:<sns_code>:\n"
+from math import radians, sin,cos,sqrt,asin
 
-# de outro user quando muda de posicao
-# LOC:<latitude>:<longitude>:\n
+# globals
 
-# de outro user quando percebe que esta proximo de si
-# TOK:<mytoken>:\n
+server_IP = '127.0.0.1'
+server_port = 60000
 
-# de outro user em resposta a mensagem TOK enviada
-# RTOK:<mytoken>:\n
+I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
 
-# do server quando alguem tem covid
-# CON:(<token>:)*\n
+own_port = 60000
+other_port = 60000
+own_port_b = 60001
+other_port_b = 60001
+
+def calc_distance(lat1,lon1,lat2,lon2):
+    lat1,lon1 = radians(lat1),radians(lon1)
+    lat2,lon2 = radians(lat2),radians(lon2)
+
+    dlon = lon2-lon1
+    dlat = lat2-lat2
+    trig = pow(sin(dlat/2),2) + cos(lat1) * cos(lat2) * pow(sin(dlon/2),2)
+    Radius = 6371
+    return 2 * asin(sqrt(trig)) * Radius
+
+def send_message(msg, host, port):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    client = ssl.wrap_socket(client, keyfile="client.key", certfile="client.crt")
+
+    client.connect((host, port))
+    client.send(msg.encode("utf-8"))
+    client.close()
+
+    print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+
+def treat_loc(client_address,lat,lon,user):
+    latitude = user.latitude
+    longitude = user.longitude
+    curr_token = user.actualToken
+    dist = calc_distance(latitude,longitude,lon,lat)
+    if dist <= 5:
+        # send TOK
+        ans = 'TOK:' + str(curr_token) + ":\n"
+        send_message(ans, client_address[0], client_address[1])
+
+def treat_tok(client_address,o_tok,user):
+    
+    curr_token = user.actualToken
+    curr_loc = user.actualLoc
+    recvTokens = user.recvTokens
+
+    now = datetime.datetime.now()
+    recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
+
+    
+    sentTokens[curr_token] = {'datetime':now}
+
+    ans = "RTOK:" + str(curr_token) + ":\n"
+    send_message(ans, client_address[0], client_address[1])
+
+def treat_rtok(client_address, o_tok,user):
+    curr_loc = user.actualLoc
+    recvTokens = user.recvTokens
+
+    now = datetime.datetime.now()
+    recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
+
+def treat_cod(client_address,sns_code, user):
+    global I_14_DAYS_IN_SECONDS, server_IP, server_port
+
+    sentTokens = user.sentTokens
+
+    print("You received a code from SNS due to your positive COVID test: " + sns_code + ".")
+    user.add_sns_code(sns_code)
+
+    # filter sentTokens maintaining only the last 14 days
+    now = datetime.datetime.now()
+    for key in sentTokens:
+        delta = now - sentTokens[key]['datetime']
+
+        if(delta > I_14_DAYS_IN_SECONDS):
+            sentTokens.pop(key)
+
+    ans = "POS:" + str(sns_code) + ":"
+    for tok in sentTokens:
+        ans += str(tok) + ':'
+    ans = ans + "\n"
+    send_message(ans, server_IP, server_port)
+
+def treat_con(client_address,server_tokens,user):
+
+    global I_14_DAYS_IN_SECONDS
+
+    
+    recvTokens = user.recvTokens
+
+    # filter recvTokens maintaining only the last 14 days
+    now = datetime.datetime.now()
+    for key in recvTokens:
+        delta = now - recvTokens[key]['datetime']
+
+        if(delta > I_14_DAYS_IN_SECONDS):
+            recvTokens.pop(key)
 
 
-# ENVIA:
+    positive_situations = []
 
-# Pra outros utilizadores: Sempre que altera a sua localizacao
-# LOC:<latitude>:<longitude>:\n
+    for pos_tok in server_tokens:
+        if pos_tok in recvTokens:
+            positive_situations += [recvTokens[pos_tok]] # stores dictionary {'location':, 'datetime':}
+    
+    if(len(positive_situations) != 0):
+        print("You were in contact with someone with COVID-19. List of places/time:")
+        for i in range(len(positive_situations)):
+            dt = positive_situations[i]['datetime']
+            print("\tLocation:" + positive_situations[i]['location'] + ". Hour - Day/Month/Year: " + str(dt.hour)+ " - " + str(dt.day) + "/" + str(dt.month) + "/" + str(dt.year) + ".")
 
-# Pra outro utilizador: Sempre que recebe uma localizacao da qual esta proximo
-# TOK:<mytoken>:\n
+def treat_message(msg, client_address, user):
 
-# Pra outro utilizador: Sempre que recebe "TOK:<token>:\n"
-# RTOK:<mytoken>:\n
+    # parse message
+    msg_args = msg.split(':')
+
+    if(msg_args[-1] != '\n'): # wrong formatting - ignore
+        return
+
+    # LOC E RECEBIDO NO PORTO 60001 POR LIGACOES UDP 
+    # if(msg_args[0] == 'LOC'): # LOC:<lat>:<lon>:\n
+    #     o_lat, o_lon = 0, 0
+    #     try:
+    #         assert(len(msg_args) == 4)
+    #         o_lat = float(msg_args[1])
+    #         o_lon = float(msg_args[2])
+    #     except:
+    #         return
+    #     treat_loc(client_address,o_lat,o_lon,user)
+
+    if(msg_args[0] == 'TOK'):
+        o_tok = 0
+        try:
+            assert(len(msg_args) == 3)
+            o_tok = int(msg_args[1])
+        except:
+            return
+        treat_tok(client_address,o_tok,user)
+
+    elif(msg_args[0] == 'RTOK'):
+        o_tok = 0
+        try:
+            assert(len(msg_args) == 3)
+            o_tok = int(msg_args[1])
+        except:
+            return
+        treat_rtok(client_address,o_tok,user)
+    elif(msg_args[0] == 'COD'):
+        sns_code = 0
+        try:
+            assert(len(msg_args) == 3)
+            sns_code = int(msg_args[1])
+        except:
+            return
+
+        treat_cod(client_address,sns_code,user)
 
 
-# Pro servidor: Sempre que recebe "COD:<sns_code>:\n" do sns
-# POS:<sns_code>:(<encrypt_token>:)*\n
+    elif(msg_args[0] == 'CON'):
+        server_tokens = []
+        for i in range(1,len(msg_args)-1):
+            server_tokens += [msg_args[i]]
+        
 
+        treat_con(client_address,server_tokens,user)
 
-def listen(own_port):
+def listen_all_tcp(own_port, user):
 
     HOST = "127.0.0.1" #"192.168.1.254"
 
@@ -55,6 +196,8 @@ def listen(own_port):
     server.bind((HOST, own_port))
     server.listen(5)
 
+    threads_lst = []
+
     while True:
         connection, client_address = server.accept()
         msg = ""
@@ -63,16 +206,77 @@ def listen(own_port):
             if not data:
                 break
             msg = msg + data
-            print("Received: ")
-            print(data)
+        print("Received: ")
+        print(msg)
+        connection.close()
+
+
+        t1 = threading.Thread(target = treat_message, args = (msg,client_address,user,))    
+        t1.start()
+
+        idx_t = 0
+        while idx_t < len(threads_lst):
+            if(threads_lst[idx_t].is_alive()):
+                idx_t += 1
+            else:
+                threads_lst[idx_t].join()
+                threads_lst.pop(idx_t)
+
+        threads_lst += [t1]
+
+
+def listen_loc(own_port_b, user):
+    port = own_port_b
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
+    # Enable broadcasting mode
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    client.bind(("", port))
+
+    
+    threads_lst = []
+
+    while True:
+        data, addr = client.recvfrom(1024)
+        data = data.decode('utf-8')
+        print("received message: %s"%data)
+
+        data_args = data.splt(':')
+
+        if(len(data_args) != 4 or data_args[-1] != '\n' or data_args[0] != 'LOC'): # invalid format
+            continue
         
-        # parse message
-        #msg = msg.split(':')
+        lat, lon = 0,0
+        try:
+            lat = float(data_args[1])
+            lon = float(data_args[2])
+        except:
+            continue # invalid format
 
 
-class RecvToken:
-    def __init__(self, token, latitude, longitude):
-        self.token = token
+        t1 = threading.Thread(target= treat_loc, args=(addr,lat,lon,user,))
+        t1.start()
+
+        idx_t = 0
+        while idx_t < len(threads_lst):
+            if(threads_lst[idx_t].is_alive()):
+                idx_t += 1
+            else:
+                threads_lst[idx_t].join()
+                threads_lst.pop(idx_t)
+
+        threads_lst += [t1]
+
+
+        
+
+
+
+
+def location_by_coord(latitude, longitude):
 
         coord = latitude + ", " + longitude
 
@@ -93,19 +297,30 @@ class RecvToken:
             locationInfo += location.raw['address']['country'] + ", "
         
         if not locationInfo:
-            self.location = "Unknown"
+            return "Unknown"
         else:
             size = len(locationInfo)
-            self.location = locationInfo[:size - 2]
+            locationInfo = locationInfo[:size - 2]
+            return locationInfo
 
 class User:
-    def __init__(self, name, actualToken, sentTokens, recvTokens, latitude, longitude):
+    def __init__(self, name, sentTokens, recvTokens, latitude, longitude):
         self.name = name
-        self.actualToken = actualToken
+        self.createNewToken()
         self.sentTokens = sentTokens
         self.recvTokens = recvTokens
         self.latitude = latitude
         self.longitude = longitude
+        self.actualLoc = location_by_coord(latitude,longitude)
+        self.sns_codes = []
+    def createNewToken(self):
+        self.actualToken = random.randint(1,1000000000)
+    def add_sns_code(self,code):
+        self.sns_code += [code]
+    def list_sns_codes(self):
+        print("SNS codes:")
+        for code in self.sns_code:
+            print("\t" + code)
 
     
 def usage():
@@ -113,30 +328,11 @@ def usage():
     sys.exit(1)
 
 def set_loc(user):
+    #user.createNewToken()
     print("Set your actual location")
     user.latitude = input("Latitude: ")
     user.longitude = input("Longitude: ")
 
-def send_loc(lat,long,other_port):
-
-    HOST = "127.0.0.1" #"192.168.1.1"
-
-    #ips = comm.get_IPs()
-
-
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    client = ssl.wrap_socket(client, keyfile="client.key", certfile="client.crt")
-
-    client.connect((HOST, other_port))
-
-    while True:
-        from time import sleep
-        s = "LOC:" + str(lat) + ":" + str(long) + ":\n"
-        se = s.encode("utf-8")
-        client.send(se)
-        sleep(1)
 
 if __name__ == '__main__':
     if len(sys.argv) != 1 and len(sys.argv) != 2:
@@ -155,26 +351,34 @@ if __name__ == '__main__':
     longitude = 0
     if len(sys.argv) == 1:
         name = input("Username: ")
+        print("Set your actual location")
+        latitude = input("Latitude: ")
+        longitude = input("Longitude: ")
     
     if len(sys.argv) == 2:
         #get info
         pass
     
-    #getToken()
-    user = User(name, 0, sentTokens, recvTokens, latitude, longitude)
+    user = User(name, sentTokens, recvTokens, latitude, longitude)
     
-    own_port = int(input("own port: "))
-    other_port = int(input("other port: "))
+    #own_port = int(input("own port: "))
+    #other_port = int(input("other port: "))
 
-    own_port_b = int(input("own port for broadcast: "))
-    other_port_b = int(input("other port for broadcast: "))
+    #own_port_b = int(input("own port for broadcast: "))
+    #other_port_b = int(input("other port for broadcast: "))
+
+    own_port = 60000
+    other_port = 60000
+    own_port_b = 60001
+    other_port_b = 60001
+
+
     # listen should run in background
-    t1 = threading.Thread(target = listen, args = (own_port,) )
+    t1 = threading.Thread(target = listen_all_tcp, args = (own_port,user) )
     t1.start()
-    t2 = threading.Thread(target = udp_client.recv_loc, args = (own_port_b,) )
+    t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
     t2.start()
 
-    set_loc(user)
     udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
     command = 0
@@ -202,22 +406,8 @@ if __name__ == '__main__':
         elif command == 4:
             pass
         elif command == 5:
-            pass
+            user.list_sns_codes()
         
-    #recvtkn = RecvToken(10, latitude, longitude)
-    #print(recvtkn.token)
-    #print(recvtkn.location)
-
-    #send_loc(latitude, longitude, other_port)
-
-
-
-    # wait in loop for command line inputs (as position shift)
-        # send LOK in case of new position
-
-    #while True:
-    #    cmd = input("> ")
-        #move:<lat>:<long>
 
     t1.join()
-    te.join()
+    t2.join()
