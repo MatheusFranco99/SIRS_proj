@@ -1,10 +1,10 @@
 import socket
 import ssl
 
-from server import HOST as SERVER_HOST
-from server import PORT as SERVER_PORT
+from server_tls import HOST as SERVER_HOST
+from server_tls import PORT as SERVER_PORT
 
-HOST = "192.168.1.1"
+HOST = "192.168.0.10"
 PORT = 60002
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -14,7 +14,7 @@ client = ssl.wrap_socket(client, keyfile="client.key", certfile="client.crt")
 
 if __name__ == "__main__":
     client.bind((HOST, PORT))
-    client.connect((SERVER_HOST, SERVER_PORT))
+    client.connect(("192.168.0.100", 60000))
 
     while True:
         from time import sleep

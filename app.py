@@ -25,6 +25,9 @@ other_port = 60000
 own_port_b = 60001
 other_port_b = 60001
 
+key = ""
+cert = ""
+
 def calc_distance(lat1,lon1,lat2,lon2):
     lat1,lon1 = radians(lat1),radians(lon1)
     lat2,lon2 = radians(lat2),radians(lon2)
@@ -36,10 +39,11 @@ def calc_distance(lat1,lon1,lat2,lon2):
     return 2 * asin(sqrt(trig)) * Radius
 
 def send_message(msg, host, port):
+    global key, cert
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    client = ssl.wrap_socket(client, keyfile="client.key", certfile="client.crt")
+    client = ssl.wrap_socket(client, keyfile=key, certfile=cert)
 
     client.connect((host, port))
     client.send(msg.encode("utf-8"))
@@ -185,13 +189,14 @@ def treat_message(msg, client_address, user):
         treat_con(client_address,server_tokens,user)
 
 def listen_all_tcp(own_port, user):
+    global key, cert
 
     HOST = "127.0.0.1" #"192.168.1.254"
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server = ssl.wrap_socket(
-        server, server_side=True, keyfile="server.key", certfile="server.crt"
+        server, server_side=True, keyfile=key, certfile=cert
     )
     server.bind((HOST, own_port))
     server.listen(5)
@@ -244,7 +249,7 @@ def listen_loc(own_port_b, user):
         data = data.decode('utf-8')
         print("received message: %s"%data)
 
-        data_args = data.splt(':')
+        data_args = data.split(':')
 
         if(len(data_args) != 4 or data_args[-1] != '\n' or data_args[0] != 'LOC'): # invalid format
             continue
@@ -277,8 +282,8 @@ def listen_loc(own_port_b, user):
 
 
 def location_by_coord(latitude, longitude):
-
-        coord = latitude + ", " + longitude
+        return ""
+        """coord = str(latitude) + ", " + str(longitude)
 
         location = Nomi_locator.reverse(coord)
 
@@ -301,7 +306,7 @@ def location_by_coord(latitude, longitude):
         else:
             size = len(locationInfo)
             locationInfo = locationInfo[:size - 2]
-            return locationInfo
+            return locationInfo"""
 
 class User:
     def __init__(self, name, sentTokens, recvTokens, latitude, longitude):
@@ -316,10 +321,10 @@ class User:
     def createNewToken(self):
         self.actualToken = random.randint(1,1000000000)
     def add_sns_code(self,code):
-        self.sns_code += [code]
+        self.sns_codes += [code]
     def list_sns_codes(self):
         print("SNS codes:")
-        for code in self.sns_code:
+        for code in self.sns_codes:
             print("\t" + code)
 
     
@@ -330,11 +335,12 @@ def usage():
 def set_loc(user):
     #user.createNewToken()
     print("Set your actual location")
-    user.latitude = input("Latitude: ")
-    user.longitude = input("Longitude: ")
+    user.latitude = float(input("Latitude: "))
+    user.longitude = float(input("Longitude: "))
 
 
 if __name__ == '__main__':
+
     if len(sys.argv) != 1 and len(sys.argv) != 2:
         usage()
 
@@ -349,11 +355,15 @@ if __name__ == '__main__':
     recvTokens = {}
     latitude = 0
     longitude = 0
+    
     if len(sys.argv) == 1:
         name = input("Username: ")
         print("Set your actual location")
-        latitude = input("Latitude: ")
-        longitude = input("Longitude: ")
+        latitude = float(input("Latitude: "))
+        longitude = float(input("Longitude: "))
+        key = input("Key: ")
+        cert = input("Cert: ")
+
     
     if len(sys.argv) == 2:
         #get info

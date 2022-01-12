@@ -1,7 +1,7 @@
 import socket
 import ssl
 
-HOST = "192.168.1.254"
+HOST = "192.168.0.100"
 PORT = 60000
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -25,7 +25,7 @@ if __name__ == "__main__":
             print(data.decode('utf-8'))
 
 
-def server_tls(HOST,PORT):
+"""def server_tls(HOST,PORT):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server = ssl.wrap_socket(
@@ -41,6 +41,6 @@ def server_tls(HOST,PORT):
             if not data:
                 break
             print("Received: ")
-            print(data.decode('utf-8'))
+            print(data.decode('utf-8'))"""
 
             
