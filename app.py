@@ -19,7 +19,7 @@ import struct
 
 # globals
 
-server_IP = '127.0.0.1'
+server_IP = '192.168.0.1'
 server_port = 60000
 
 I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
@@ -102,8 +102,11 @@ def treat_cod(client_address,sns_code, user):
     for key in sentTokens:
         delta = now - sentTokens[key]['datetime']
 
-        if(delta > I_14_DAYS_IN_SECONDS):
+        """if(delta > I_14_DAYS_IN_SECONDS):
+            sentTokens.pop(key)"""
+        if(delta > datetime.timedelta(days = 14)):
             sentTokens.pop(key)
+
 
     #ans = "POS:" + str(sns_code) + ":"
     ans = "POS:" + sns_code + ":"
@@ -125,15 +128,18 @@ def treat_con(client_address,server_tokens,user):
     for key in recvTokens:
         delta = now - recvTokens[key]['datetime']
 
-        if(delta > I_14_DAYS_IN_SECONDS):
+        """if(delta > I_14_DAYS_IN_SECONDS):
+            recvTokens.pop(key)"""
+
+        if(delta > datetime.timedelta(days = 14)):
             recvTokens.pop(key)
 
 
     positive_situations = []
 
     for pos_tok in server_tokens:
-        if pos_tok in recvTokens:
-            positive_situations += [recvTokens[pos_tok]] # stores dictionary {'location':, 'datetime':}
+        if int(pos_tok) in recvTokens:
+            positive_situations += [recvTokens[int(pos_tok)]] # stores dictionary {'location':, 'datetime':}
     
     if(len(positive_situations) != 0):
         print("You were in contact with someone with COVID-19. List of places/time:")

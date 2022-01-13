@@ -35,18 +35,19 @@ if __name__ == "__main__":
 
             sns_code = get_sns_code()
             msg = 'COD:' + sns_code + ":\n"
+
+            client.connect(("192.168.0.1", 60000))
+            client.send(msg.encode("utf-8"))
+            client.close()
+
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            client = ssl.wrap_socket(client, keyfile='sns.key', certfile='sns.crt')
             
             client.connect((user_host, user_port))
             client.send(msg.encode("utf-8"))
             client.close()
             print("To (host,port): " + str(user_host) + "," + str(user_port) + ". Sent: " + msg)
-
-            """
-            SEND TO SERVER
-            client.connect((user_host, 60000))
-            client.send(msg.encode("utf-8"))
-            client.close()
-            """
 
 
 
