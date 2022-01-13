@@ -12,4 +12,4 @@ def broadcast_loc(latitude, longitude, port):
     server.settimeout(0.2)
     s = "LOC:" + str(latitude) + ":" + str(longitude) + ":\n"
     se = s.encode("utf-8")
-    server.sendto(se, ('<broadcast>', port))
+    server.sendto(se, ('192.168.0.255', port))

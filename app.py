@@ -10,8 +10,12 @@ import udp_server
 import udp_client
 
 import datetime
+import time
 
 from math import radians, sin,cos,sqrt,asin
+
+import fcntl
+import struct
 
 # globals
 
@@ -59,7 +63,8 @@ def treat_loc(client_address,lat,lon,user):
     if dist <= 5:
         # send TOK
         ans = 'TOK:' + str(curr_token) + ":\n"
-        send_message(ans, client_address[0], client_address[1])
+        #send_message(ans, client_address[0], client_address[1])
+        send_message(ans, client_address[0], 60000)
 
 def treat_tok(client_address,o_tok,user):
     
@@ -74,7 +79,8 @@ def treat_tok(client_address,o_tok,user):
     sentTokens[curr_token] = {'datetime':now}
 
     ans = "RTOK:" + str(curr_token) + ":\n"
-    send_message(ans, client_address[0], client_address[1])
+    #send_message(ans, client_address[0], client_address[1])
+    send_message(ans, client_address[0], 60000)
 
 def treat_rtok(client_address, o_tok,user):
     curr_loc = user.actualLoc
@@ -99,10 +105,12 @@ def treat_cod(client_address,sns_code, user):
         if(delta > I_14_DAYS_IN_SECONDS):
             sentTokens.pop(key)
 
-    ans = "POS:" + str(sns_code) + ":"
+    #ans = "POS:" + str(sns_code) + ":"
+    ans = "POS:" + sns_code + ":"
     for tok in sentTokens:
         ans += str(tok) + ':'
     ans = ans + "\n"
+    print("send cod")
     send_message(ans, server_IP, server_port)
 
 def treat_con(client_address,server_tokens,user):
@@ -173,7 +181,8 @@ def treat_message(msg, client_address, user):
         sns_code = 0
         try:
             assert(len(msg_args) == 3)
-            sns_code = int(msg_args[1])
+            #sns_code = int(msg_args[1])
+            sns_code = msg_args[1]
         except:
             return
 
@@ -191,7 +200,7 @@ def treat_message(msg, client_address, user):
 def listen_all_tcp(own_port, user):
     global key, cert
 
-    HOST = "127.0.0.1" #"192.168.1.254"
+    HOST = get_ip_address('enp0s3')
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -246,6 +255,10 @@ def listen_loc(own_port_b, user):
 
     while True:
         data, addr = client.recvfrom(1024)
+
+        if addr[0] == get_ip_address('enp0s3'):
+            continue
+
         data = data.decode('utf-8')
         print("received message: %s"%data)
 
@@ -338,13 +351,19 @@ def set_loc(user):
     user.latitude = float(input("Latitude: "))
     user.longitude = float(input("Longitude: "))
 
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', bytes(ifname[:15], 'utf-8'))
+    )[20:24])
+
 
 if __name__ == '__main__':
 
     if len(sys.argv) != 1 and len(sys.argv) != 2:
         usage()
-
-
 
 
 
@@ -389,6 +408,8 @@ if __name__ == '__main__':
     t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
     t2.start()
 
+    time.sleep(1)
+
     udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
     command = 0
@@ -418,6 +439,9 @@ if __name__ == '__main__':
         elif command == 5:
             user.list_sns_codes()
         
-
+    """print("Sent: ")
+    print(user.sentTokens)
+    print("Recv: ")
+    print(user.recvTokens)"""
     t1.join()
     t2.join()
