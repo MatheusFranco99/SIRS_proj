@@ -59,7 +59,7 @@ def treat_loc(client_address,lat,lon,user):
     latitude = user.latitude
     longitude = user.longitude
     curr_token = user.actualToken
-    dist = calc_distance(latitude,longitude,lon,lat)
+    dist = calc_distance(latitude,longitude,lat,lon)
     if dist <= 5:
         # send TOK
         ans = 'TOK:' + str(curr_token) + ":\n"
@@ -301,8 +301,7 @@ def listen_loc(own_port_b, user):
 
 
 def location_by_coord(latitude, longitude):
-        return ""
-        """coord = str(latitude) + ", " + str(longitude)
+        coord = str(latitude) + ", " + str(longitude)
 
         location = Nomi_locator.reverse(coord)
 
@@ -325,7 +324,7 @@ def location_by_coord(latitude, longitude):
         else:
             size = len(locationInfo)
             locationInfo = locationInfo[:size - 2]
-            return locationInfo"""
+            return locationInfo
 
 class User:
     def __init__(self, name, sentTokens, recvTokens, latitude, longitude):
@@ -373,7 +372,7 @@ if __name__ == '__main__':
 
 
 
-    Nomi_locator = Nominatim(user_agent="My App")
+    Nomi_locator = Nominatim(user_agent="http")
 
     print("Helcome to the app \'Covid Contacts Trace\'")
     sentTokens = {}
