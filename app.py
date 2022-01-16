@@ -62,6 +62,9 @@ def treat_loc(client_address,lat,lon,user):
     dist = calc_distance(latitude,longitude,lat,lon)
     if dist <= 5:
         # send TOK
+        sentTokens = user.sentTokens
+        now = datetime.datetime.now()
+        sentTokens[curr_token] = {'datetime':now}
         ans = 'TOK:' + str(curr_token) + ":\n"
         #send_message(ans, client_address[0], client_address[1])
         send_message(ans, client_address[0], 60000)
@@ -71,6 +74,7 @@ def treat_tok(client_address,o_tok,user):
     curr_token = user.actualToken
     curr_loc = user.actualLoc
     recvTokens = user.recvTokens
+    sentTokens = user.sentTokens
 
     now = datetime.datetime.now()
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
@@ -413,7 +417,7 @@ if __name__ == '__main__':
     t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
     t2.start()
 
-    time.sleep(1)
+    time.sleep(1) #se houver contato logo temos que já estar à escuta
 
     udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
@@ -444,9 +448,9 @@ if __name__ == '__main__':
         elif command == 5:
             user.list_sns_codes()
         
-    """print("Sent: ")
+    print("Sent: ")
     print(user.sentTokens)
     print("Recv: ")
-    print(user.recvTokens)"""
+    print(user.recvTokens)
     t1.join()
     t2.join()
