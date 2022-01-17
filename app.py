@@ -22,6 +22,9 @@ import struct
 server_IP = '192.168.0.1'
 server_port = 60000
 
+proxy_IP = '192.168.0.2'
+proxy_port = 60002
+
 I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
 
 own_port = 60000
@@ -94,7 +97,7 @@ def treat_rtok(client_address, o_tok,user):
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
 
 def treat_cod(client_address,sns_code, user):
-    global I_14_DAYS_IN_SECONDS, server_IP, server_port
+    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port
 
     sentTokens = user.sentTokens
 
@@ -118,7 +121,7 @@ def treat_cod(client_address,sns_code, user):
         ans += str(tok) + ':'
     ans = ans + "\n"
     print("send cod")
-    send_message(ans, server_IP, server_port)
+    send_message(ans, proxy_IP, proxy_port)
 
 def treat_con(client_address,server_tokens,user):
 
