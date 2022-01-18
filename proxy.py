@@ -17,35 +17,10 @@ def send_pos(msg):
     client = ssl.wrap_socket(client, keyfile="proxy.key", certfile="proxy.crt")
 
     client.connect((server_IP, server_port))
-    client.send(msg.encode("utf-8"))
+    client.send(msg)
     client.close()
 
-    print("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
-
-
-# RECEBE:
-# De um user positivo
-# POS:<sns_code>:(<encrypt_token>:)*\n
-
-# ENVIA:
-# Para o server a mensagem
-# POS:<sns_code>:(<encrypt_token>:)*\n  
-def handle_message(msg):
-
-    # parse message
-    msg_args = msg.split(':')
-
-    if(msg_args[-1] != '\n'): # wrong formatting - ignore
-        return
-
-    # check what type of message was received and handle it in the corresponding way
-    if(msg_args[0] == 'POS'):
-        send_pos(msg)
-
-    else:
-        # message not in the proxy's protocol
-        print("Message received unknown: " + msg)
-
+    #print("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
 
 
 def listen(HOST, PORT):
@@ -65,16 +40,16 @@ def listen(HOST, PORT):
     
     while True:
         (clientConnection, clientAddress) = server.accept()
-        msg = ""
+        msg = b''
         while True:
-            data = clientConnection.recv(1024).decode('utf-8')
+            data = clientConnection.recv(1024)
             if not data:
                 break
             msg = msg + data
-        print("Received: " + msg)
+        #print("Received: " + msg)
         clientConnection.close()
 
-        t1 = threading.Thread(target = handle_message, args = (msg,))    
+        t1 = threading.Thread(target = send_pos, args = (msg,))    
         t1.start()
 
         idx_t = 0

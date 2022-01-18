@@ -17,6 +17,9 @@ from math import radians, sin,cos,sqrt,asin
 import fcntl
 import struct
 
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5
+
 # globals
 
 server_IP = '192.168.0.1'
@@ -35,6 +38,10 @@ other_port_b = 60001
 key = ""
 cert = ""
 
+with open("public_server.key", "rb") as k:
+    public_server_key = RSA.importKey(k.read())
+
+
 def calc_distance(lat1,lon1,lat2,lon2):
     lat1,lon1 = radians(lat1),radians(lon1)
     lat2,lon2 = radians(lat2),radians(lon2)
@@ -45,7 +52,13 @@ def calc_distance(lat1,lon1,lat2,lon2):
     Radius = 6371
     return 2 * asin(sqrt(trig)) * Radius
 
-def send_message(msg, host, port):
+def encrypt(data):
+    global public_server_key
+
+    cipher = PKCS1_v1_5.new(public_server_key)
+    return cipher.encrypt(data.encode())
+
+def send_message(msg, host, port, encode = True):
     global key, cert
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,10 +66,14 @@ def send_message(msg, host, port):
     client = ssl.wrap_socket(client, keyfile=key, certfile=cert)
 
     client.connect((host, port))
-    client.send(msg.encode("utf-8"))
+    if encode:
+        client.send(msg.encode("utf-8"))
+    else:
+        client.send(msg)
     client.close()
 
-    print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+    if encode:
+        print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
 def treat_loc(client_address,lat,lon,user):
     latitude = user.latitude
@@ -120,8 +137,9 @@ def treat_cod(client_address,sns_code, user):
     for tok in sentTokens:
         ans += str(tok) + ':'
     ans = ans + "\n"
+    cipher_ans = encrypt(ans)
     print("send cod")
-    send_message(ans, proxy_IP, proxy_port)
+    send_message(cipher_ans, proxy_IP, proxy_port, False)
 
 def treat_con(client_address,server_tokens,user):
 

@@ -3,10 +3,24 @@ import socket, ssl
 import threading
 import datetime
 
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5
+
 
 # Global variables 
 sns_DB = [] # sns codes
+proxy_IP = '192.168.0.2'
 users = ['192.168.0.2', '192.168.0.3']  # address of all active users - com o broadcast acho que isto nao vai ser preciso
+
+with open("server.key", "rb") as k:
+    key_priv = RSA.importKey(k.read())
+
+
+def decrypt_data(data):
+    global key_priv
+    print(data)
+    decipher = PKCS1_v1_5.new(key_priv)
+    return decipher.decrypt(data, None).decode()
 
 # RECEBE:
 # do SNS quando user esta positivo pra covid19
@@ -52,7 +66,11 @@ def received_pos(sns_code, tokens):
 
 
     
-def handle_message(msg):
+def handle_message(msg, ciphertext = False):
+
+    if ciphertext:
+        msg = decrypt_data(msg)
+        print("Received: " + msg)
 
     # parse message
     msg_args = msg.split(':')
@@ -92,6 +110,7 @@ def handle_message(msg):
 
 
 def listen(server_port):
+    global proxy_IP
     print("Server listening...")
 
     HOST = "192.168.0.1"
@@ -111,16 +130,25 @@ def listen(server_port):
     
     while True:
         (clientConnection, clientAddress) = server.accept()
-        msg = ""
-        while True:
-            data = clientConnection.recv(1024).decode('utf-8')
-            if not data:
-                break
-            msg = msg + data
-        print("Received: " + msg)
-        clientConnection.close()
-
-        t1 = threading.Thread(target = handle_message, args = (msg,))    
+        if clientAddress[0] == proxy_IP:  #proxy sends ciphertext, can't decode
+            msg = b''
+            while True:
+                data = clientConnection.recv(1024)
+                if not data:
+                    break
+                msg = msg + data
+            t1 = threading.Thread(target = handle_message, args = (msg, True,))
+        else:
+            msg = ""
+            while True:
+                data = clientConnection.recv(1024).decode('utf-8')
+                if not data:
+                    break
+                msg = msg + data
+            print("Received: " + msg)
+            t1 = threading.Thread(target = handle_message, args = (msg,))
+        
+        clientConnection.close()    
         t1.start()
 
         idx_t = 0
