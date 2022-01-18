@@ -2,6 +2,8 @@ import sys
 import socket, ssl
 import threading
 import datetime
+import pickle
+import hashlib
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
@@ -11,6 +13,12 @@ from Crypto.Cipher import PKCS1_v1_5
 sns_DB = [] # sns codes
 proxy_IP = '192.168.0.2'
 users = ['192.168.0.2', '192.168.0.3']  # address of all active users - com o broadcast acho que isto nao vai ser preciso
+
+users_reg = []
+users_logged = []
+users_password = {} # ip : password
+
+quit_program = False
 
 with open("server.key", "rb") as k:
     key_priv = RSA.importKey(k.read())
@@ -60,13 +68,127 @@ def received_pos(sns_code, tokens):
     
     print("----")
 
+
+
+# RECEBE:
+# De um user que quer se registar
+# REG:\n
+
+# ENVIA:
+# lista de ips logados
+# REA:\n
+def received_reg(ip_user,passw):
+    print("Registering user")
+    global users, users_logged, users_reg, users_password
+
+    msg = ""
+
+    if ip_user in users_reg:
+        msg = 'REF:User already registered:\n'
+    elif len(passw) < 10:
+        msg = 'REF:Password must have at least 10 characters:\n'
+    else:
+        contains_digit = False
+        contains_capital = False
+        contains_small = False
+        invalid_char = False
+        for ch in passw:
+            if('a' <= ch and ch <= 'z'):
+                contains_small = True
+            elif('A' <= ch and ch <= 'Z'):
+                contains_capital = True
+            elif('0' <= ch and ch <= '9'):
+                contains_digit = True
+            else:
+                invalid_char = True
+        
+        if(invalid_char or (not contains_capital) or (not contains_digit) or (not contains_small)):
+            msg = 'REF:Password must have at least one capital letter, one small letter and one digit:\n'
+        else:
+            users.append(ip_user)
+            users_reg.append(ip_user)
+
+            binary_pass = ''.join(format(ord(i), '08b') for i in passw)
+            hash_object = hashlib.sha512(binary_pass)
+            hex_dig = hash_object.hexdigest()
+            users_password[ip_user] = hex_dig
+        
+            msg = 'REA:'
+            msg += '\n'
+
+    print("msg: " + msg)
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
+
+    client.connect((ip_user, 60000))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    
+    print("----")
+
+# RECEBE:
+# De um user que quer se registar
+# LOG:\n
+
+# ENVIA:
+# lista de ips logados
+# LOA:(<ips>:)*\n
+def received_log(ip_user,passw):
+    print("Logging in user")
+    global users, users_logged, users_reg, users_password
+
+    msg = ""
+
+    if(ip_user not in users_reg):
+        msg = 'LOF:User not registered:\n'
+    else:
+        binary_pass = ''.join(format(ord(i), '08b') for i in passw)
+        hash_object = hashlib.sha512(binary_pass)
+        hex_dig = hash_object.hexdigest()
+
+        if(hex_dig != users_password[ip_user]):
+            msg = 'LOF:Wrong password:\n'
+        else:
+            msg = 'LOA:'
+            for ip in users_logged:
+                msg = msg + ip + ":"
+            msg += '\n'
+            if ip_user not in users_logged:
+                users_logged.append(ip_user)
+
+    print("msg: " + msg)
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
+
+    client.connect((ip_user, 60000))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    
+    print("----")
+
+
+# RECEBE:
+# De um user que quer se registar
+# LGT:\n
+def received_lgt(ip_user):
+    print("Logging out user")
+    global users, users_logged, users_reg
+
+    users_logged.remove(ip_user)
+    
+    print("----")
+
     # Falta udp broadcast para enviar os tokens aos users (send aqui receive nos clients)
     # acho que é mais facil falar com voces para poder mexer no client e implementar isto que 
     # faz-se rapido
 
 
     
-def handle_message(msg, ciphertext = False):
+def handle_message(msg, client_addr, ciphertext = False):
 
     if ciphertext:
         msg = decrypt_data(msg)
@@ -102,6 +224,36 @@ def handle_message(msg, ciphertext = False):
         except:
             return
         received_pos(sns_code, tokens)
+    
+    elif(msg_args[0] == 'REG'):
+        user_ip = ''
+        passw = ""
+        try:
+            assert(len(msg_args) == 3)
+            user_ip = client_addr[0]
+            passw = msg_args[1]
+        except:
+            return
+        received_reg(user_ip,passw)
+    
+    elif(msg_args[0] == 'LOG'):
+        user_ip = ''
+        passw = ""
+        try:
+            assert(len(msg_args) == 3)
+            user_ip = client_addr[0]
+            passw = msg_args[1]
+        except:
+            return
+        received_log(user_ip,passw)
+    elif(msg_args[0] == 'LGT'):
+        user_ip = ''
+        try:
+            assert(len(msg_args) == 2)
+            user_ip = client_addr[0]
+        except:
+            return
+        received_lgt(user_ip)
 
     else:
         # message not in the server's protocol
@@ -110,7 +262,7 @@ def handle_message(msg, ciphertext = False):
 
 
 def listen(server_port):
-    global proxy_IP
+    global proxy_IP, quit_program
     print("Server listening...")
 
     HOST = "192.168.0.1"
@@ -128,25 +280,27 @@ def listen(server_port):
 
     threads_lst = []
     
-    while True:
+    while not quit_program:
+        server.settimeout(2)
         (clientConnection, clientAddress) = server.accept()
         if clientAddress[0] == proxy_IP:  #proxy sends ciphertext, can't decode
             msg = b''
             while True:
-                data = clientConnection.recv(1024)
+                data,client_addr = clientConnection.recv(1024)
                 if not data:
                     break
                 msg = msg + data
-            t1 = threading.Thread(target = handle_message, args = (msg, True,))
+            t1 = threading.Thread(target = handle_message, args = (msg, client_addr, True))
         else:
             msg = ""
             while True:
-                data = clientConnection.recv(1024).decode('utf-8')
+                data,client_addr = clientConnection.recv(1024)
+                data = data.decode('utf-8')
                 if not data:
                     break
                 msg = msg + data
             print("Received: " + msg)
-            t1 = threading.Thread(target = handle_message, args = (msg,))
+            t1 = threading.Thread(target = handle_message, args = (msg, client_addr, False))
         
         clientConnection.close()    
         t1.start()
@@ -161,10 +315,28 @@ def listen(server_port):
 
         threads_lst += [t1]
 
+    
+    for thr in threads_lst:
+        thr.join()
+
 
 
 if __name__ == "__main__":
     print("Server turned on!")
+
+    
+    if (len(sys.argv) == 2):
+        #get info
+        filename = sys.argv[1]
+        picklefile = open(filename,'rb')
+
+        # LOAD sns_DB/users/users_reg/users_logged/users_password
+        sns_DB = pickle.load(picklefile)
+        users = pickle.load(picklefile)
+        users_reg = pickle.load(picklefile)
+        users_logged = pickle.load(picklefile)
+        users_password = pickle.load(picklefile)
+        picklefile.close()
 
     SERVER_PORT =  60000
     
@@ -172,4 +344,18 @@ if __name__ == "__main__":
     t1 = threading.Thread(target = listen, args = (SERVER_PORT,) )
     t1.start()
 
+    input("Enter anything to quit:")
+    quit_program = True
+
+
     t1.join()
+
+    picklefile = open('server_pickle','wb')
+
+    # STORES sns_DB/users/users_reg/users_logged/users_password
+    pickle.dump(sns_DB,picklefile)
+    pickle.dump(users,picklefile)
+    pickle.dump(users_reg,picklefile)
+    pickle.dump(users_logged,picklefile)
+    pickle.dump(users_password,picklefile)
+    picklefile.close()

@@ -1,3 +1,4 @@
+from atexit import unregister
 import sys
 from geopy.geocoders import Nominatim
 import socket, ssl
@@ -20,6 +21,8 @@ import struct
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 
+import pickle
+
 # globals
 
 server_IP = '192.168.0.1'
@@ -35,8 +38,7 @@ other_port = 60000
 own_port_b = 60001
 other_port_b = 60001
 
-key = ""
-cert = ""
+quit_program = False
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
@@ -58,18 +60,18 @@ def encrypt(data):
     cipher = PKCS1_v1_5.new(public_server_key)
     return cipher.encrypt(data.encode())
 
-def send_message(msg, host, port, encode = True):
-    global key, cert
+def send_message(msg, host, port, user, encode = True):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    client = ssl.wrap_socket(client, keyfile=key, certfile=cert)
+    client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
     client.connect((host, port))
     if encode:
         client.send(msg.encode("utf-8"))
     else:
         client.send(msg)
+
     client.close()
 
     if encode:
@@ -86,8 +88,8 @@ def treat_loc(client_address,lat,lon,user):
         now = datetime.datetime.now()
         sentTokens[curr_token] = {'datetime':now}
         ans = 'TOK:' + str(curr_token) + ":\n"
-        #send_message(ans, client_address[0], client_address[1])
-        send_message(ans, client_address[0], 60000)
+        #send_message(ans, client_address[0], client_address[1],user)
+        send_message(ans, client_address[0], 60000,user)
 
 def treat_tok(client_address,o_tok,user):
     
@@ -103,8 +105,8 @@ def treat_tok(client_address,o_tok,user):
     sentTokens[curr_token] = {'datetime':now}
 
     ans = "RTOK:" + str(curr_token) + ":\n"
-    #send_message(ans, client_address[0], client_address[1])
-    send_message(ans, client_address[0], 60000)
+    #send_message(ans, client_address[0], client_address[1],user)
+    send_message(ans, client_address[0], 60000,user)
 
 def treat_rtok(client_address, o_tok,user):
     curr_loc = user.actualLoc
@@ -139,7 +141,7 @@ def treat_cod(client_address,sns_code, user):
     ans = ans + "\n"
     cipher_ans = encrypt(ans)
     print("send cod")
-    send_message(cipher_ans, proxy_IP, proxy_port, False)
+    send_message(cipher_ans, proxy_IP, proxy_port, user, False)
 
 def treat_con(client_address,server_tokens,user):
 
@@ -181,15 +183,15 @@ def treat_message(msg, client_address, user):
         return
 
     # LOC E RECEBIDO NO PORTO 60001 POR LIGACOES UDP 
-    # if(msg_args[0] == 'LOC'): # LOC:<lat>:<lon>:\n
-    #     o_lat, o_lon = 0, 0
-    #     try:
-    #         assert(len(msg_args) == 4)
-    #         o_lat = float(msg_args[1])
-    #         o_lon = float(msg_args[2])
-    #     except:
-    #         return
-    #     treat_loc(client_address,o_lat,o_lon,user)
+    if(msg_args[0] == 'LOC'): # LOC:<lat>:<lon>:\n
+        o_lat, o_lon = 0, 0
+        try:
+            assert(len(msg_args) == 4)
+            o_lat = float(msg_args[1])
+            o_lon = float(msg_args[2])
+        except:
+            return
+        treat_loc(client_address,o_lat,o_lon,user)
 
     if(msg_args[0] == 'TOK'):
         o_tok = 0
@@ -229,21 +231,22 @@ def treat_message(msg, client_address, user):
         treat_con(client_address,server_tokens,user)
 
 def listen_all_tcp(own_port, user):
-    global key, cert
+    global quit_program
 
     HOST = get_ip_address('enp0s3')
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server = ssl.wrap_socket(
-        server, server_side=True, keyfile=key, certfile=cert
+        server, server_side=True, keyfile=user.key, certfile=user.cert
     )
     server.bind((HOST, own_port))
     server.listen(5)
 
     threads_lst = []
 
-    while True:
+    while not quit_program:
+        server.settimeout(2)
         connection, client_address = server.accept()
         msg = ""
         while True:
@@ -268,9 +271,13 @@ def listen_all_tcp(own_port, user):
                 threads_lst.pop(idx_t)
 
         threads_lst += [t1]
+    
+    for thr in threads_lst:
+        thr.join()
 
 
 def listen_loc(own_port_b, user):
+    global quit_program
     port = own_port_b
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
@@ -284,8 +291,13 @@ def listen_loc(own_port_b, user):
     
     threads_lst = []
 
-    while True:
-        data, addr = client.recvfrom(1024)
+    while not quit_program:
+        client.settimeout(2)
+        data, addr = None,None
+        try:
+            data, addr = client.recvfrom(1024)
+        except:
+            continue
 
         if addr[0] == get_ip_address('enp0s3'):
             continue
@@ -318,6 +330,11 @@ def listen_loc(own_port_b, user):
                 threads_lst.pop(idx_t)
 
         threads_lst += [t1]
+    
+    
+    for thr in threads_lst:
+        thr.join()
+
 
 
         
@@ -352,7 +369,7 @@ def location_by_coord(latitude, longitude):
             return locationInfo
 
 class User:
-    def __init__(self, name, sentTokens, recvTokens, latitude, longitude):
+    def __init__(self, name, sentTokens, recvTokens, latitude, longitude, key, crt):
         self.name = name
         self.createNewToken()
         self.sentTokens = sentTokens
@@ -361,6 +378,10 @@ class User:
         self.longitude = longitude
         self.actualLoc = location_by_coord(latitude,longitude)
         self.sns_codes = []
+        self.others_ips = []
+        self.registered = False
+        self.key = key
+        self.cert = crt
     def createNewToken(self):
         self.actualToken = random.randint(1,1000000000)
     def add_sns_code(self,code):
@@ -369,14 +390,17 @@ class User:
         print("SNS codes:")
         for code in self.sns_codes:
             print("\t" + code)
-
+    def appendIP(self,ip):
+        self.others_ips += [ip]
+    def getOthersIPs(self):
+        return self.others_ips
     
 def usage():
     sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
     sys.exit(1)
 
 def set_loc(user):
-    #user.createNewToken()
+    user.createNewToken()
     print("Set your actual location")
     user.latitude = float(input("Latitude: "))
     user.longitude = float(input("Longitude: "))
@@ -389,6 +413,137 @@ def get_ip_address(ifname):
         struct.pack('256s', bytes(ifname[:15], 'utf-8'))
     )[20:24])
 
+
+def registerUser(user,passw):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
+
+    msg = "REG:" + passw + ":\n"
+
+    client.connect((server_IP, server_port))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+
+    HOST = get_ip_address('enp0s3')
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server = ssl.wrap_socket(
+        server, server_side=True, keyfile=user.key, certfile=user.cert
+    )
+    server.bind((HOST, own_port))
+    server.listen(1)
+
+    connection, client_address = server.accept()
+    msg = ""
+    while True:
+        data = connection.recv(1024).decode('utf-8')
+        if not data:
+            break
+        msg = msg + data
+    print("Received: ")
+    print(msg)
+    connection.close()
+    server.close()
+    
+    
+    msg_args = msg.split(":")
+    if(msg_args[-1] != "\n"):
+        print("Error: wrong format answer from server to register message.")
+        exit(0)
+    
+    if(msg_args[0] == 'REF' and len(msg_args) == 3):
+        print("Error: register refused.",msg_args[1])
+        exit(0)
+    elif (not (msg_args[0] == 'REA' and len(msg_args) == 2)):
+        print("Error: wrong format answer from server to register message.")
+        exit(0)
+
+    user.registered = True
+    
+
+def loginUser(user,passw):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
+    msg = "LOG:" + passw + "\n"
+
+    client.connect((server_IP, server_port))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+
+    HOST = get_ip_address('enp0s3')
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server = ssl.wrap_socket(
+        server, server_side=True, keyfile=user.key, certfile=user.cert
+    )
+    server.bind((HOST, own_port))
+    server.listen(1)
+
+    connection, client_address = server.accept()
+    msg = ""
+    while True:
+        data = connection.recv(1024).decode('utf-8')
+        if not data:
+            break
+        msg = msg + data
+    print("Received: ")
+    print(msg)
+    connection.close()
+    server.close()
+    
+    
+    msg_args = msg.split(":")
+    
+    if(msg_args[-1] != "\n"):
+        print("Error: wrong format answer from server to login message.")
+        exit(0)
+    
+    if(msg_args[0] == 'LOF' and len(msg_args) == 3):
+        print("Error: login refused.",msg_args[1])
+        exit(0)
+    elif (not (msg_args[0] == 'LOA' and msg_args[-1] == '\n')):
+        print("Error: wrong format answer from server to log in")
+        exit(0)
+
+    
+    for i in range(1,len(msg_args)-1):
+        user.appendIP(msg_args[i])
+
+def logoutUser(user):
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
+
+    msg = "LGT:\n"
+
+    client.connect((server_IP, server_port))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+    
+
+def send_loc(user: User, others_port):
+    msg = "LOC:" + str(user.latitude) + ":" + str(user.longitude) + ":\n"
+
+    unreachable_users = []
+
+    for ip in user.getOthersIPs():
+        try:
+            send_status = send_message(msg,ip,others_port,user)
+        except:
+            unreachable_users += [ip]
+    
+    for ip in unreachable_users:
+        user.others_ips.remove(ip)
 
 if __name__ == '__main__':
 
@@ -405,20 +560,33 @@ if __name__ == '__main__':
     latitude = 0
     longitude = 0
     
+    user = None
+
+    password = ""
+
     if len(sys.argv) == 1:
+        print("Register as first time user -> ")
         name = input("Username: ")
+        password = input("Password:")
         print("Set your actual location")
         latitude = float(input("Latitude: "))
         longitude = float(input("Longitude: "))
         key = input("Key: ")
         cert = input("Cert: ")
+        user = User(name, sentTokens, recvTokens, latitude, longitude, key, cert)
 
     
     if len(sys.argv) == 2:
         #get info
-        pass
+        filename = sys.argv[1]
+        picklefile = open(filename,'rb')
+        # LOAD user
+        user = pickle.load(picklefile)
+        picklefile.close()
+
+        print("Login ->")
+        password = input("Password:")
     
-    user = User(name, sentTokens, recvTokens, latitude, longitude)
     
     #own_port = int(input("own port: "))
     #other_port = int(input("other port: "))
@@ -432,15 +600,23 @@ if __name__ == '__main__':
     other_port_b = 60001
 
 
+    # register in server
+
+    if(not user.registered):
+        registerUser(user, password)
+    loginUser(user, password)
+
+
     # listen should run in background
     t1 = threading.Thread(target = listen_all_tcp, args = (own_port,user) )
     t1.start()
-    t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
-    t2.start()
+    #t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
+    #t2.start()
 
     time.sleep(1) #se houver contato logo temos que já estar à escuta
 
-    udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
+    send_loc(user,other_port)
+    # udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
     command = 0
     while command != 6:
@@ -459,7 +635,8 @@ if __name__ == '__main__':
             user.name = input("Insert new name: ")
         elif command == 2:
             set_loc(user)
-            udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
+            send_loc(user,other_port)
+            #udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
         elif command == 3:
             print("Actual location")
             print("Latitude: " + str(user.latitude))
@@ -468,10 +645,19 @@ if __name__ == '__main__':
             pass
         elif command == 5:
             user.list_sns_codes()
-        
+
+    quit_program = True
+
     print("Sent: ")
     print(user.sentTokens)
     print("Recv: ")
     print(user.recvTokens)
     t1.join()
-    t2.join()
+    #t2.join()
+    
+    logoutUser(user)
+
+    # STORES user
+    pickle_out_file = open(user.name,'wb')
+    pickle.dump(user,pickle_out_file)
+    pickle_out_file.close()
