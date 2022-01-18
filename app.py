@@ -28,7 +28,7 @@ import pickle
 server_IP = '192.168.0.1'
 server_port = 60000
 
-proxy_IP = '192.168.0.2'
+proxy_IP = '192.168.0.1'
 proxy_port = 60002
 
 I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
@@ -78,6 +78,8 @@ def send_message(msg, host, port, user, encode = True):
         print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
 def treat_loc(client_address,lat,lon,user):
+    if client_address[0] not in user.others_ips:
+        user.appendIP(client_address[0])
     latitude = user.latitude
     longitude = user.longitude
     curr_token = user.actualToken
@@ -247,7 +249,10 @@ def listen_all_tcp(own_port, user):
 
     while not quit_program:
         server.settimeout(2)
-        connection, client_address = server.accept()
+        try:
+            connection, client_address = server.accept()
+        except:
+            continue
         msg = ""
         while True:
             data = connection.recv(1024).decode('utf-8')
@@ -470,12 +475,7 @@ def loginUser(user,passw):
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
-    msg = "LOG:" + passw + "\n"
-
-    client.connect((server_IP, server_port))
-    client.send(msg.encode("utf-8"))
-    client.close()
-    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+    msg = "LOG:" + passw + ":\n"
 
     HOST = get_ip_address('enp0s3')
 
@@ -486,6 +486,11 @@ def loginUser(user,passw):
     )
     server.bind((HOST, own_port))
     server.listen(1)
+
+    client.connect((server_IP, server_port))
+    client.send(msg.encode("utf-8"))
+    client.close()
+    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
     connection, client_address = server.accept()
     msg = ""
@@ -513,7 +518,7 @@ def loginUser(user,passw):
         print("Error: wrong format answer from server to log in")
         exit(0)
 
-    
+    user.others_ips = []
     for i in range(1,len(msg_args)-1):
         user.appendIP(msg_args[i])
 
@@ -629,7 +634,7 @@ if __name__ == '__main__':
         print("6 - Quit")
         command = int(input().split(' ')[0])
 
-        if command < 1 or command > 6:
+        if command < 1 or command > 7:
             print("Invalid command")
         elif command == 1:
             user.name = input("Insert new name: ")
@@ -645,6 +650,8 @@ if __name__ == '__main__':
             pass
         elif command == 5:
             user.list_sns_codes()
+        elif command == 7:
+            print(user.getOthersIPs())
 
     quit_program = True
 

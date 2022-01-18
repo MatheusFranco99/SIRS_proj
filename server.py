@@ -11,7 +11,7 @@ from Crypto.Cipher import PKCS1_v1_5
 
 # Global variables 
 sns_DB = [] # sns codes
-proxy_IP = '192.168.0.2'
+proxy_IP = '192.168.0.1'
 users = ['192.168.0.2', '192.168.0.3']  # address of all active users - com o broadcast acho que isto nao vai ser preciso
 
 users_reg = []
@@ -108,8 +108,7 @@ def received_reg(ip_user,passw):
             users.append(ip_user)
             users_reg.append(ip_user)
 
-            binary_pass = ''.join(format(ord(i), '08b') for i in passw)
-            hash_object = hashlib.sha512(binary_pass)
+            hash_object = hashlib.sha512(passw.encode("utf-8"))
             hex_dig = hash_object.hexdigest()
             users_password[ip_user] = hex_dig
         
@@ -144,8 +143,7 @@ def received_log(ip_user,passw):
     if(ip_user not in users_reg):
         msg = 'LOF:User not registered:\n'
     else:
-        binary_pass = ''.join(format(ord(i), '08b') for i in passw)
-        hash_object = hashlib.sha512(binary_pass)
+        hash_object = hashlib.sha512(passw.encode("utf-8"))
         hex_dig = hash_object.hexdigest()
 
         if(hex_dig != users_password[ip_user]):
@@ -214,7 +212,7 @@ def handle_message(msg, client_addr, ciphertext = False):
         sns_code = ""
         tokens = []
         try:
-            assert(len(msg_args) <= 4)
+            assert(len(msg_args) >= 4)
             sns_code = msg_args[1]
             msg_args.pop(0) # delete POS
             msg_args.pop(0) # delete sns_code
@@ -282,25 +280,30 @@ def listen(server_port):
     
     while not quit_program:
         server.settimeout(2)
-        (clientConnection, clientAddress) = server.accept()
+        clientConnection = None
+        clientAddress = None
+        try:
+            (clientConnection, clientAddress) = server.accept()
+        except:
+            continue
         if clientAddress[0] == proxy_IP:  #proxy sends ciphertext, can't decode
             msg = b''
             while True:
-                data,client_addr = clientConnection.recv(1024)
+                data = clientConnection.recv(1024)
                 if not data:
                     break
                 msg = msg + data
-            t1 = threading.Thread(target = handle_message, args = (msg, client_addr, True))
+            t1 = threading.Thread(target = handle_message, args = (msg, clientAddress, True,))
         else:
             msg = ""
             while True:
-                data,client_addr = clientConnection.recv(1024)
+                data = clientConnection.recv(1024)
                 data = data.decode('utf-8')
                 if not data:
                     break
                 msg = msg + data
             print("Received: " + msg)
-            t1 = threading.Thread(target = handle_message, args = (msg, client_addr, False))
+            t1 = threading.Thread(target = handle_message, args = (msg, clientAddress, False,))
         
         clientConnection.close()    
         t1.start()
