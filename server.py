@@ -5,13 +5,21 @@ import datetime
 import pickle
 import hashlib
 
+from Crypto.Hash import SHA256
+from Crypto.Signature import PKCS1_v1_5 as PKCS_SIGN
+
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
+
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+import os
 
 
 # Global variables 
 sns_DB = [] # sns codes
-proxy_IP = '192.168.0.1'
+proxy_IP = '192.168.0.4'
+sns_IP = '192.168.0.4'
 users = ['192.168.0.2', '192.168.0.3']  # address of all active users - com o broadcast acho que isto nao vai ser preciso
 
 users_reg = []
@@ -23,12 +31,35 @@ quit_program = False
 with open("server.key", "rb") as k:
     key_priv = RSA.importKey(k.read())
 
+with open("public_sns.key", "rb") as k:
+    sns_public_key = RSA.importKey(k.read())
+
 
 def decrypt_data(data):
     global key_priv
     print(data)
     decipher = PKCS1_v1_5.new(key_priv)
-    return decipher.decrypt(data, None).decode()
+    return decipher.decrypt(data, None)
+
+def validate_signature(msg, signature):
+    global sns_public_key
+
+    digest = SHA256.new()
+    digest.update(msg)
+
+    verifier = PKCS_SIGN.new(sns_public_key)
+    verified = verifier.verify(digest, signature)
+
+    if verified:
+        #check freshness
+        timestamp1 = datetime.datetime.now().timestamp()
+        timestamp2 = float(msg.split(b":")[0])
+        if timestamp1 - timestamp2 < 5:     #5 segundos
+            return True
+    
+    return False
+
+
 
 # RECEBE:
 # do SNS quando user esta positivo pra covid19
@@ -56,6 +87,8 @@ def received_pos(sns_code, tokens):
 
     msg = 'CON:' + ":".join(tokens) + ":\n"
     print("msg: " + msg)
+
+    print(users)
 
     for ip in users:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -189,8 +222,30 @@ def received_lgt(ip_user):
 def handle_message(msg, client_addr, ciphertext = False):
 
     if ciphertext:
-        msg = decrypt_data(msg)
-        print("Received: " + msg)
+        cod_msg = b':CIPHER_COD_MSG:'
+        if cod_msg in msg:
+            ciphered_args = msg.split(cod_msg)
+
+            secret_enc = ciphered_args[0]
+            cipher_msg = ciphered_args[1].split(b':SIGNATURE:')[0]
+            signature = ciphered_args[1].split(b':SIGNATURE:')[1]
+
+            secret = decrypt_data(secret_enc)
+            secret_key = secret.split(b':INITIALVECTOR:')[0]
+            iv = secret.split(b':INITIALVECTOR:')[1]
+
+            aes_dec = AES.new(secret_key, AES.MODE_CBC, iv)
+            message = unpad(aes_dec.decrypt(cipher_msg), AES.block_size)
+
+            if not validate_signature(message, signature):
+                return
+            
+            msg = (message.split(b":", 1)[1]).decode("utf-8")
+            print("Received secure msg: " + msg)
+
+        else:
+            msg = decrypt_data(msg).decode()
+            print("Received: " + msg)
 
     # parse message
     msg_args = msg.split(':')
@@ -286,7 +341,7 @@ def listen(server_port):
             (clientConnection, clientAddress) = server.accept()
         except:
             continue
-        if clientAddress[0] == proxy_IP:  #proxy sends ciphertext, can't decode
+        if clientAddress[0] == proxy_IP or clientAddress[0] == sns_IP:  #proxy sends ciphertext, can't decode
             msg = b''
             while True:
                 data = clientConnection.recv(1024)

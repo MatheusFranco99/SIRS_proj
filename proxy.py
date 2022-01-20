@@ -67,7 +67,7 @@ def listen(HOST, PORT):
 if __name__ == "__main__":
     print("Proxy turned on!")
 
-    HOST = "192.168.0.1"
+    HOST = "192.168.0.4"
     PORT = 60002
 
     # cria thread listen

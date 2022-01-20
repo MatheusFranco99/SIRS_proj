@@ -28,7 +28,7 @@ import pickle
 server_IP = '192.168.0.1'
 server_port = 60000
 
-proxy_IP = '192.168.0.1'
+proxy_IP = '192.168.0.4'
 proxy_port = 60002
 
 I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
