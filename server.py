@@ -20,7 +20,7 @@ import os
 sns_DB = [] # sns codes
 proxy_IP = '192.168.0.4'
 sns_IP = '192.168.0.4'
-users = ['192.168.0.2', '192.168.0.3']  # address of all active users - com o broadcast acho que isto nao vai ser preciso
+users = ['192.168.0.2', '192.168.0.3']  # address of all active users
 
 users_reg = []
 users_logged = []
@@ -121,6 +121,7 @@ def received_reg(ip_user,passw):
     elif len(passw) < 10:
         msg = 'REF:Password must have at least 10 characters:\n'
     else:
+        # check password strongness
         contains_digit = False
         contains_capital = False
         contains_small = False
@@ -161,7 +162,7 @@ def received_reg(ip_user,passw):
     print("----")
 
 # RECEBE:
-# De um user que quer se registar
+# De um user que quer fazer login
 # LOG:\n
 
 # ENVIA:
@@ -203,7 +204,7 @@ def received_log(ip_user,passw):
 
 
 # RECEBE:
-# De um user que quer se registar
+# De um user que fez logout
 # LGT:\n
 def received_lgt(ip_user):
     print("Logging out user")
@@ -212,10 +213,6 @@ def received_lgt(ip_user):
     users_logged.remove(ip_user)
     
     print("----")
-
-    # Falta udp broadcast para enviar os tokens aos users (send aqui receive nos clients)
-    # acho que é mais facil falar com voces para poder mexer no client e implementar isto que 
-    # faz-se rapido
 
 
     
@@ -307,7 +304,8 @@ def handle_message(msg, client_addr, ciphertext = False):
         except:
             return
         received_lgt(user_ip)
-
+    elif(msg_args[0] == 'NEG'):
+        print("Negative message received")
     else:
         # message not in the server's protocol
         print("Message received unknown: " + msg)
@@ -341,6 +339,7 @@ def listen(server_port):
             (clientConnection, clientAddress) = server.accept()
         except:
             continue
+
         if clientAddress[0] == proxy_IP or clientAddress[0] == sns_IP:  #proxy sends ciphertext, can't decode
             msg = b''
             while True:

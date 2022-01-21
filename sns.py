@@ -98,5 +98,3 @@ if __name__ == "__main__":
             client.send(msg.encode("utf-8"))
             client.close()
             print("To (host,port): " + str(user_host) + "," + str(user_port) + ". Sent: " + msg)
-
-

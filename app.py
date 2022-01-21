@@ -39,6 +39,7 @@ own_port_b = 60001
 other_port_b = 60001
 
 quit_program = False
+negative = True
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
@@ -118,8 +119,9 @@ def treat_rtok(client_address, o_tok,user):
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
 
 def treat_cod(client_address,sns_code, user):
-    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port
+    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port, negative
 
+    negative = False
     sentTokens = user.sentTokens
 
     print("You received a code from SNS due to your positive COVID test: " + sns_code + ".")
@@ -144,6 +146,16 @@ def treat_cod(client_address,sns_code, user):
     cipher_ans = encrypt(ans)
     print("send cod")
     send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+
+def send_negative(user):
+    global negative, proxy_IP, proxy_port
+
+    while negative:
+        time.sleep(random.randint(1,15))
+        ans = "NEG:\n"
+        cipher_ans = encrypt(ans)
+        print("send negative")
+        send_message(cipher_ans, proxy_IP, proxy_port, user, False)
 
 def treat_con(client_address,server_tokens,user):
 
@@ -280,7 +292,7 @@ def listen_all_tcp(own_port, user):
     for thr in threads_lst:
         thr.join()
 
-
+'''
 def listen_loc(own_port_b, user):
     global quit_program
     port = own_port_b
@@ -339,18 +351,13 @@ def listen_loc(own_port_b, user):
     
     for thr in threads_lst:
         thr.join()
-
-
-
-        
-
-
-
+'''
 
 def location_by_coord(latitude, longitude):
         coord = str(latitude) + ", " + str(longitude)
 
         location = Nomi_locator.reverse(coord)
+        #location = "beja"
 
         locationInfo = ""
         if 'road' in location.raw['address'].keys():
@@ -400,9 +407,6 @@ class User:
     def getOthersIPs(self):
         return self.others_ips
     
-def usage():
-    sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
-    sys.exit(1)
 
 def set_loc(user):
     user.createNewToken()
@@ -543,23 +547,25 @@ def send_loc(user: User, others_port):
 
     for ip in user.getOthersIPs():
         try:
-            send_status = send_message(msg,ip,others_port,user)
+            send_message(msg,ip,others_port,user)
         except:
             unreachable_users += [ip]
     
     for ip in unreachable_users:
         user.others_ips.remove(ip)
 
-if __name__ == '__main__':
+def usage():
+    sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
+    sys.exit(1)
 
+
+if __name__ == '__main__':
     if len(sys.argv) != 1 and len(sys.argv) != 2:
         usage()
 
-
-
     Nomi_locator = Nominatim(user_agent="http")
 
-    print("Helcome to the app \'Covid Contacts Trace\'")
+    print("Welcome to the app \'Covid Contacts Trace\'")
     sentTokens = {}
     recvTokens = {}
     latitude = 0
@@ -613,10 +619,11 @@ if __name__ == '__main__':
 
 
     # listen should run in background
-    t1 = threading.Thread(target = listen_all_tcp, args = (own_port,user) )
+    t1 = threading.Thread(target = listen_all_tcp, args = (own_port,user,) )
     t1.start()
-    #t2 = threading.Thread(target = listen_loc, args = (own_port_b,user) )
-    #t2.start()
+    # every user starts in a negative state
+    t2 = threading.Thread(target = send_negative, args = (user,) )
+    t2.start()
 
     time.sleep(1) #se houver contato logo temos que já estar à escuta
 
@@ -627,7 +634,7 @@ if __name__ == '__main__':
     while command != 6:
         print("-=[ \'Covid Contacts Trace\' Menu ]=-")
         print("1 - Set user name")
-        print("2 - Set actual loaction")
+        print("2 - Set actual location")
         print("3 - Show actual location")
         print("4 - Insert SNS code")
         print("5 - Check codes sent by SNS")
@@ -660,7 +667,7 @@ if __name__ == '__main__':
     print("Recv: ")
     print(user.recvTokens)
     t1.join()
-    #t2.join()
+    t2.join()
     
     logoutUser(user)
 

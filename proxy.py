@@ -6,11 +6,13 @@ import threading
 # Global variables 
 server_IP = '192.168.0.1'
 server_port = 60000
+quit_program = False
     
-
-def send_pos(msg):
+# Forward all messages received
+def send_msg(msg):
     global server_IP, server_port
 
+    print("Passo aqui")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -24,6 +26,7 @@ def send_pos(msg):
 
 
 def listen(HOST, PORT):
+    global quit_program
     print("Proxy listening...")
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,7 +41,7 @@ def listen(HOST, PORT):
 
     threads_lst = []
     
-    while True:
+    while not quit_program:
         (clientConnection, clientAddress) = server.accept()
         msg = b''
         while True:
@@ -49,7 +52,7 @@ def listen(HOST, PORT):
         #print("Received: " + msg)
         clientConnection.close()
 
-        t1 = threading.Thread(target = send_pos, args = (msg,))    
+        t1 = threading.Thread(target = send_msg, args = (msg,))    
         t1.start()
 
         idx_t = 0
@@ -73,5 +76,8 @@ if __name__ == "__main__":
     # cria thread listen
     t1 = threading.Thread(target = listen, args = (HOST, PORT) )
     t1.start()
+
+    input("Enter anything to quit:")
+    quit_program = True
 
     t1.join()
