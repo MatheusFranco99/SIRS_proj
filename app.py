@@ -39,7 +39,6 @@ own_port_b = 60001
 other_port_b = 60001
 
 quit_program = False
-negative = True
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
@@ -119,9 +118,8 @@ def treat_rtok(client_address, o_tok,user):
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
 
 def treat_cod(client_address,sns_code, user):
-    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port, negative
+    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port
 
-    negative = False
     sentTokens = user.sentTokens
 
     print("You received a code from SNS due to your positive COVID test: " + sns_code + ".")
@@ -148,9 +146,9 @@ def treat_cod(client_address,sns_code, user):
     send_message(cipher_ans, proxy_IP, proxy_port, user, False)
 
 def send_negative(user):
-    global negative, proxy_IP, proxy_port
+    global quit_program, proxy_IP, proxy_port
 
-    while negative:
+    while not quit_program:
         time.sleep(random.randint(1,15))
         ans = "NEG:\n"
         cipher_ans = encrypt(ans)

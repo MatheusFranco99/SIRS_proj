@@ -25,6 +25,7 @@ users = ['192.168.0.2', '192.168.0.3']  # address of all active users
 users_reg = []
 users_logged = []
 users_password = {} # ip : password
+users_salt = {} # ip : salt
 
 quit_program = False
 
@@ -112,7 +113,7 @@ def received_pos(sns_code, tokens):
 # REA:\n
 def received_reg(ip_user,passw):
     print("Registering user")
-    global users, users_logged, users_reg, users_password
+    global users, users_logged, users_reg, users_password, users_salt
 
     msg = ""
 
@@ -142,8 +143,10 @@ def received_reg(ip_user,passw):
             users.append(ip_user)
             users_reg.append(ip_user)
 
-            hash_object = hashlib.sha512(passw.encode("utf-8"))
+            salt = os.urandom(16) #salt 128 bits
+            hash_object = hashlib.sha512(passw.encode("utf-8") + salt)
             hex_dig = hash_object.hexdigest()
+            users_salt[ip_user] = salt
             users_password[ip_user] = hex_dig
         
             msg = 'REA:'
@@ -170,14 +173,14 @@ def received_reg(ip_user,passw):
 # LOA:(<ips>:)*\n
 def received_log(ip_user,passw):
     print("Logging in user")
-    global users, users_logged, users_reg, users_password
+    global users, users_logged, users_reg, users_password, users_salt
 
     msg = ""
 
     if(ip_user not in users_reg):
         msg = 'LOF:User not registered:\n'
     else:
-        hash_object = hashlib.sha512(passw.encode("utf-8"))
+        hash_object = hashlib.sha512(passw.encode("utf-8") + users_salt[ip_user])
         hex_dig = hash_object.hexdigest()
 
         if(hex_dig != users_password[ip_user]):
@@ -387,12 +390,13 @@ if __name__ == "__main__":
         filename = sys.argv[1]
         picklefile = open(filename,'rb')
 
-        # LOAD sns_DB/users/users_reg/users_logged/users_password
+        # LOAD sns_DB/users/users_reg/users_logged/users_password/users_salt
         sns_DB = pickle.load(picklefile)
         users = pickle.load(picklefile)
         users_reg = pickle.load(picklefile)
         users_logged = pickle.load(picklefile)
         users_password = pickle.load(picklefile)
+        users_salt = pickle.load(picklefile)
         picklefile.close()
 
     SERVER_PORT =  60000
@@ -409,10 +413,11 @@ if __name__ == "__main__":
 
     picklefile = open('server_pickle','wb')
 
-    # STORES sns_DB/users/users_reg/users_logged/users_password
+    # STORES sns_DB/users/users_reg/users_logged/users_password/users_salt
     pickle.dump(sns_DB,picklefile)
     pickle.dump(users,picklefile)
     pickle.dump(users_reg,picklefile)
     pickle.dump(users_logged,picklefile)
     pickle.dump(users_password,picklefile)
+    pickle.dump(users_salt,picklefile)
     picklefile.close()
