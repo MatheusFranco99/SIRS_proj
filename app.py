@@ -18,6 +18,8 @@ from math import radians, sin,cos,sqrt,asin
 import fcntl
 import struct
 
+import os
+
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 
@@ -595,8 +597,16 @@ if __name__ == '__main__':
         print("Set your actual location")
         latitude = float(input("Latitude: "))
         longitude = float(input("Longitude: "))
-        key = input("Key: ")
-        cert = input("Cert: ")
+        
+        key = name + ".key"
+        public_key = name + "_public.key"
+        cert = name + ".crt"
+
+        os.system("openssl genrsa -out " + key)
+        os.system("openssl rsa -in "+ key + " -pubout > " + public_key)
+        os.system("openssl req -new -key " + key + " -out " + cert)
+        os.system("openssl x509 -req -days 365 -in " + cert + " -signkey " + key + " -out " + cert)
+
         user = User(name, sentTokens, recvTokens, latitude, longitude, key, cert)
 
     
