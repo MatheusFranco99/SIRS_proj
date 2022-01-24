@@ -42,7 +42,11 @@ def listen(HOST, PORT):
     threads_lst = []
     
     while not quit_program:
-        (clientConnection, clientAddress) = server.accept()
+        server.settimeout(2)
+        try:
+            clientConnection, clientAddress = server.accept()
+        except:
+            continue
         msg = b''
         while True:
             data = clientConnection.recv(1024)

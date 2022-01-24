@@ -7,6 +7,8 @@ import threading
 import comm
 import random
 
+import stdiomask
+
 import udp_server
 import udp_client
 
@@ -593,7 +595,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         print("Register as first time user -> ")
         name = input("Username: ")
-        password = input("Password (at least 10 characters, with at least one capital letter, one small and one number):")
+        password = stdiomask.getpass(prompt="Password (at least 10 characters, with at least one capital letter, one small and one number):")
         print("Set your actual location")
         latitude = float(input("Latitude: "))
         longitude = float(input("Longitude: "))
@@ -602,10 +604,10 @@ if __name__ == '__main__':
         public_key = name + "_public.key"
         cert = name + ".crt"
 
-        os.system("openssl genrsa -out " + key)
-        os.system("openssl rsa -in "+ key + " -pubout > " + public_key)
-        os.system("openssl req -new -key " + key + " -out " + cert)
-        os.system("openssl x509 -req -days 365 -in " + cert + " -signkey " + key + " -out " + cert)
+        os.system("openssl genrsa -out " + key + " > /dev/null 2>&1")
+        os.system("openssl rsa -in "+ key + " -pubout > " + public_key + " > /dev/null 2>&1")
+        os.system("echo -e \"\n\n\n\n\n\n\n\n\n\" | openssl req -new -key " + key + " -out " + cert + " > /dev/null 2>&1")
+        os.system("openssl x509 -req -days 365 -in " + cert + " -signkey " + key + " -out " + cert + " > /dev/null 2>&1")
 
         user = User(name, sentTokens, recvTokens, latitude, longitude, key, cert)
 
