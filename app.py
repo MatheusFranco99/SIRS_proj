@@ -31,6 +31,9 @@ server_port = 60000
 proxy_IP = '192.168.0.4'
 proxy_port = 60002
 
+sns_IP = '192.168.0.4'
+sns_port = 60000
+
 I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
 
 own_port = 60000
@@ -59,6 +62,10 @@ def encrypt(data):
 
     cipher = PKCS1_v1_5.new(public_server_key)
     return cipher.encrypt(data.encode())
+
+def informSns(user):
+    msg = "NAME:" + user.name + ":\n"
+    send_message(msg,sns_IP,sns_port,user)
 
 def send_message(msg, host, port, user, encode = True):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -434,7 +441,7 @@ def registerUser(user,passw):
 
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
-    msg = "REG:" + passw + ":\n"
+    msg = "REG:" + user.name + ":" + passw + ":\n"
 
     client.connect((server_IP, server_port))
     client.send(msg.encode("utf-8"))
@@ -477,6 +484,7 @@ def registerUser(user,passw):
         exit(0)
 
     user.registered = True
+    informSns(user)
     
 
 def loginUser(user,passw):

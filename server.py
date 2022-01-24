@@ -26,6 +26,7 @@ users_reg = []
 users_logged = []
 users_password = {} # ip : password
 users_salt = {} # ip : salt
+users_name = []
 
 quit_program = False
 
@@ -111,13 +112,14 @@ def received_pos(sns_code, tokens):
 # ENVIA:
 # lista de ips logados
 # REA:\n
-def received_reg(ip_user,passw):
+def received_reg(ip_user,passw,name):
     print("Registering user")
-    global users_logged, users_reg, users_password, users_salt
+    global users_logged, users_reg, users_password, users_salt, users_name
 
     msg = ""
-
-    if ip_user in users_reg:
+    if name in users_name:
+        msg = 'REF:Username already exist:\n'
+    elif ip_user in users_reg:
         msg = 'REF:User already registered:\n'
     elif len(passw) < 10:
         msg = 'REF:Password must have at least 10 characters:\n'
@@ -147,6 +149,7 @@ def received_reg(ip_user,passw):
             hex_dig = hash_object.hexdigest()
             users_salt[ip_user] = salt
             users_password[ip_user] = hex_dig
+            users_name.append(name)
         
             msg = 'REA:'
             msg += '\n'
@@ -280,13 +283,15 @@ def handle_message(msg, client_addr, ciphertext = False):
     elif(msg_args[0] == 'REG'):
         user_ip = ''
         passw = ""
+        name = ""
         try:
-            assert(len(msg_args) == 3)
+            assert(len(msg_args) == 4)
             user_ip = client_addr[0]
-            passw = msg_args[1]
+            name = msg_args[1]
+            passw = msg_args[2]
         except:
             return
-        received_reg(user_ip,passw)
+        received_reg(user_ip,passw,name)
     
     elif(msg_args[0] == 'LOG'):
         user_ip = ''
@@ -379,12 +384,13 @@ def listen(server_port):
         # make backup of the pickle
         picklefile = open(SERVER_PICKLE,'wb')
 
-        # STORES sns_DB/users_reg/users_logged/users_password/users_salt
+        # STORES sns_DB/users_reg/users_logged/users_password/users_salt/users_name
         pickle.dump(sns_DB,picklefile)
         pickle.dump(users_reg,picklefile)
         pickle.dump(users_logged,picklefile)
         pickle.dump(users_password,picklefile)
         pickle.dump(users_salt,picklefile)
+        pickle.dump(users_name,picklefile)
         picklefile.close()
 
     
@@ -402,12 +408,13 @@ if __name__ == "__main__":
         filename = sys.argv[1]
         picklefile = open(filename,'rb')
 
-        # LOAD sns_DB/users_reg/users_logged/users_password/users_salt
+        # LOAD sns_DB/users_reg/users_logged/users_password/users_salt/users_name
         sns_DB = pickle.load(picklefile)
         users_reg = pickle.load(picklefile)
         users_logged = pickle.load(picklefile)
         users_password = pickle.load(picklefile)
         users_salt = pickle.load(picklefile)
+        users_name = pickle.load(picklefile)
         picklefile.close()
 
     SERVER_PORT =  60000
@@ -424,10 +431,11 @@ if __name__ == "__main__":
 
     picklefile = open(SERVER_PICKLE,'wb')
 
-    # STORES sns_DB/users_reg/users_logged/users_password/users_salt
+    # STORES sns_DB/users_reg/users_logged/users_password/users_salt/users_name
     pickle.dump(sns_DB,picklefile)
     pickle.dump(users_reg,picklefile)
     pickle.dump(users_logged,picklefile)
     pickle.dump(users_password,picklefile)
     pickle.dump(users_salt,picklefile)
+    pickle.dump(users_name,picklefile)
     picklefile.close()

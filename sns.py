@@ -2,9 +2,13 @@ import sys
 import socket, ssl
 import random
 import string
+import threading
 
 import hashlib
 import datetime
+
+import fcntl
+import struct
 
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
@@ -33,6 +37,10 @@ def digital_signature(msg):
     signer = PKCS_SIGN.new(key_priv)
     return signer.sign(digest)
 
+names = {}
+
+quit_program = False
+
 # ENVIA:
 
 # Pra user e server: codigo quando alguem testa positivo
@@ -43,8 +51,90 @@ def get_sns_code():
     code = ''.join(random.choice(letters) for i in range(8))
     return code
 
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', bytes(ifname[:15], 'utf-8'))
+    )[20:24])
+
+def treat_message(msg, client_address):
+    global names
+
+    # parse message
+    msg_args = msg.split(':')
+
+    if(msg_args[-1] != '\n'): # wrong formatting - ignore
+        return
+
+    if(msg_args[0] == 'NAME'):
+        name = ""
+        ip = ""
+        try:
+            assert(len(msg_args) == 3)
+            name = msg_args[1]
+            ip = client_address[0]
+        except:
+            print("Wrong format in msg NAME")
+            return
+        if name not in names:
+            names[name] = ip
+        else:
+            print("Name already exist")
+
+
+def listen(own_port):
+    global quit_program
+
+    HOST = get_ip_address('enp0s3')
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server = ssl.wrap_socket(server, keyfile='sns.key', certfile='sns.crt')
+    server.bind((HOST, own_port))
+    server.listen(5)
+
+    threads_lst = []
+
+    while not quit_program:
+        server.settimeout(2)
+        try:
+            connection, client_address = server.accept()
+        except:
+            continue
+        msg = ""
+        while True:
+            data = connection.recv(1024).decode('utf-8')
+            if not data:
+                break
+            msg = msg + data
+        print("Received: ")
+        print(msg)
+        connection.close()
+
+
+        t1 = threading.Thread(target = treat_message, args = (msg,client_address,))    
+        t1.start()
+
+        idx_t = 0
+        while idx_t < len(threads_lst):
+            if(threads_lst[idx_t].is_alive()):
+                idx_t += 1
+            else:
+                threads_lst[idx_t].join()
+                threads_lst.pop(idx_t)
+
+        threads_lst += [t1]
+    
+    for thr in threads_lst:
+        thr.join()
+
 
 if __name__ == "__main__":
+
+    t1 = threading.Thread(target = listen, args = (60000,) )
+    t1.start()
     
     command = 0
     while command != 2:
@@ -56,7 +146,10 @@ if __name__ == "__main__":
         if command < 1 or command > 2:
             print("Invalid command")
         elif command == 1:
-            user_host = input("Infected IP: ")
+            user_name = input("Infected Name: ")
+            if user_name not in names:
+                print("Name doesn't exist")
+                continue
             user_port = 60000
 
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -94,7 +187,11 @@ if __name__ == "__main__":
             client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             client = ssl.wrap_socket(client, keyfile='sns.key', certfile='sns.crt')
             
-            client.connect((user_host, user_port))
+            client.connect((names[user_name], user_port))
             client.send(msg.encode("utf-8"))
             client.close()
-            print("To (host,port): " + str(user_host) + "," + str(user_port) + ". Sent: " + msg)
+            print("To (host,port): " + str(names[user_name]) + "," + str(user_port) + ". Sent: " + msg)
+        
+        quit_program = True
+        t1.join()
+    
