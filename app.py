@@ -148,12 +148,19 @@ def treat_cod(client_address,sns_code, user):
 def send_negative(user):
     global quit_program, proxy_IP, proxy_port
 
+    itt = 0
+    length = 0
     while not quit_program:
-        time.sleep(random.randint(1,15))
-        ans = "NEG:\n"
-        cipher_ans = encrypt(ans)
-        print("send negative")
-        send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+        if itt == 0:
+            ans = "NEG:\n"
+            cipher_ans = encrypt(ans)
+            print("send negative")
+            send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+            length = random.randint(1,15)/5
+            itt = itt+1
+        else:
+            itt = (itt +1)%6
+            time.sleep(length)
 
 def treat_con(client_address,server_tokens,user):
 
@@ -576,7 +583,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         print("Register as first time user -> ")
         name = input("Username: ")
-        password = input("Password:")
+        password = input("Password (at least 10 characters, with at least one capital letter, one small and one number):")
         print("Set your actual location")
         latitude = float(input("Latitude: "))
         longitude = float(input("Longitude: "))

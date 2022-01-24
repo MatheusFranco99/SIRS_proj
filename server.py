@@ -20,7 +20,7 @@ import os
 sns_DB = [] # sns codes
 proxy_IP = '192.168.0.4'
 sns_IP = '192.168.0.4'
-users = ['192.168.0.2', '192.168.0.3']  # address of all active users
+# users = ['192.168.0.2', '192.168.0.3']  # address of all active users
 
 users_reg = []
 users_logged = []
@@ -28,6 +28,8 @@ users_password = {} # ip : password
 users_salt = {} # ip : salt
 
 quit_program = False
+
+SERVER_PICKLE = 'server_pickle'
 
 with open("server.key", "rb") as k:
     key_priv = RSA.importKey(k.read())
@@ -81,7 +83,7 @@ def received_cod(sns_code):
 # CON:(<token>:)*\n
 def received_pos(sns_code, tokens):
     print("Handling positive user")
-    global sns_DB, users
+    global sns_DB
 
     if sns_code not in sns_DB:
         print("Error: Invalid sns_code")
@@ -89,9 +91,7 @@ def received_pos(sns_code, tokens):
     msg = 'CON:' + ":".join(tokens) + ":\n"
     print("msg: " + msg)
 
-    print(users)
-
-    for ip in users:
+    for ip in users_reg:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
@@ -113,7 +113,7 @@ def received_pos(sns_code, tokens):
 # REA:\n
 def received_reg(ip_user,passw):
     print("Registering user")
-    global users, users_logged, users_reg, users_password, users_salt
+    global users_logged, users_reg, users_password, users_salt
 
     msg = ""
 
@@ -140,7 +140,6 @@ def received_reg(ip_user,passw):
         if(invalid_char or (not contains_capital) or (not contains_digit) or (not contains_small)):
             msg = 'REF:Password must have at least one capital letter, one small letter and one digit:\n'
         else:
-            users.append(ip_user)
             users_reg.append(ip_user)
 
             salt = os.urandom(16) #salt 128 bits
@@ -173,7 +172,7 @@ def received_reg(ip_user,passw):
 # LOA:(<ips>:)*\n
 def received_log(ip_user,passw):
     print("Logging in user")
-    global users, users_logged, users_reg, users_password, users_salt
+    global users_logged, users_reg, users_password, users_salt
 
     msg = ""
 
@@ -211,7 +210,7 @@ def received_log(ip_user,passw):
 # LGT:\n
 def received_lgt(ip_user):
     print("Logging out user")
-    global users, users_logged, users_reg
+    global users_logged, users_reg
 
     users_logged.remove(ip_user)
     
@@ -365,6 +364,7 @@ def listen(server_port):
         clientConnection.close()    
         t1.start()
 
+        # take completed threads out of the list
         idx_t = 0
         while idx_t < len(threads_lst):
             if(threads_lst[idx_t].is_alive()):
@@ -373,7 +373,19 @@ def listen(server_port):
                 threads_lst[idx_t].join()
                 threads_lst.pop(idx_t)
 
+        # add task just started to the list
         threads_lst += [t1]
+
+        # make backup of the pickle
+        picklefile = open(SERVER_PICKLE,'wb')
+
+        # STORES sns_DB/users_reg/users_logged/users_password/users_salt
+        pickle.dump(sns_DB,picklefile)
+        pickle.dump(users_reg,picklefile)
+        pickle.dump(users_logged,picklefile)
+        pickle.dump(users_password,picklefile)
+        pickle.dump(users_salt,picklefile)
+        picklefile.close()
 
     
     for thr in threads_lst:
@@ -390,9 +402,8 @@ if __name__ == "__main__":
         filename = sys.argv[1]
         picklefile = open(filename,'rb')
 
-        # LOAD sns_DB/users/users_reg/users_logged/users_password/users_salt
+        # LOAD sns_DB/users_reg/users_logged/users_password/users_salt
         sns_DB = pickle.load(picklefile)
-        users = pickle.load(picklefile)
         users_reg = pickle.load(picklefile)
         users_logged = pickle.load(picklefile)
         users_password = pickle.load(picklefile)
@@ -411,11 +422,10 @@ if __name__ == "__main__":
 
     t1.join()
 
-    picklefile = open('server_pickle','wb')
+    picklefile = open(SERVER_PICKLE,'wb')
 
-    # STORES sns_DB/users/users_reg/users_logged/users_password/users_salt
+    # STORES sns_DB/users_reg/users_logged/users_password/users_salt
     pickle.dump(sns_DB,picklefile)
-    pickle.dump(users,picklefile)
     pickle.dump(users_reg,picklefile)
     pickle.dump(users_logged,picklefile)
     pickle.dump(users_password,picklefile)
