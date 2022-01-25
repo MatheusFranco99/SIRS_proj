@@ -6,6 +6,10 @@ import threading
 # Global variables 
 server_IP = '192.168.0.1'
 server_port = 60000
+
+my_IP = '192.168.0.4'
+my_port = 60002
+
 quit_program = False
     
 # Forward all messages received
@@ -26,11 +30,9 @@ def send_msg(msg):
     client.send(msg)
     client.close()
 
-    #print("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
 
-
+# wait for connections on the port 60002 and forward all messages to server
 def listen(HOST, PORT):
-    global quit_program
     print("Proxy listening...")
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -57,7 +59,6 @@ def listen(HOST, PORT):
             if not data:
                 break
             msg = msg + data
-        #print("Received: " + msg)
         clientConnection.close()
 
         t1 = threading.Thread(target = send_msg, args = (msg,))    
@@ -78,10 +79,10 @@ def listen(HOST, PORT):
 if __name__ == "__main__":
     print("Proxy turned on!")
 
-    HOST = "192.168.0.4"
-    PORT = 60002
+    HOST = my_IP
+    PORT = my_port
 
-    # cria thread listen
+    # create thread listen
     t1 = threading.Thread(target = listen, args = (HOST, PORT) )
     t1.start()
 

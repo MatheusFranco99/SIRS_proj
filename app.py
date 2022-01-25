@@ -38,19 +38,14 @@ proxy_port = 60002
 sns_IP = '192.168.0.4'
 sns_port = 60000
 
-I_14_DAYS_IN_SECONDS = 60 * 60 * 24 * 14
-
 own_port = 60000
-other_port = 60000
-own_port_b = 60001
-other_port_b = 60001
 
 quit_program = False
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
 
-
+# receives two geometric coordinates and calculates the distance between them
 def calc_distance(lat1,lon1,lat2,lon2):
     lat1,lon1 = radians(lat1),radians(lon1)
     lat2,lon2 = radians(lat2),radians(lon2)
@@ -61,12 +56,12 @@ def calc_distance(lat1,lon1,lat2,lon2):
     Radius = 6371
     return 2 * asin(sqrt(trig)) * Radius
 
+# encrypt data with the server's public key
 def encrypt(data):
-    global public_server_key
-
     cipher = PKCS1_v1_5.new(public_server_key)
     return cipher.encrypt(data.encode())
 
+# send a message to inform the existence of this user to the SNS
 def informSns(user):
     msg = "NAME:" + user.name + ":\n"
     try:
@@ -75,6 +70,7 @@ def informSns(user):
         print("SNS Unreachable")
         os._exit(1)
 
+# send message msg to host and port via ssl sockets (TLS)
 def send_message(msg, host, port, user, encode = True):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -93,27 +89,29 @@ def send_message(msg, host, port, user, encode = True):
     if encode:
         print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
+# checks if we are in the vicinity of the user who sent the message
 def treat_loc(client_address,lat,lon,user):
     if client_address[0] not in user.others_ips:
         user.appendIP(client_address[0])
+
     latitude = user.latitude
     longitude = user.longitude
     curr_token = user.actualToken
     dist = calc_distance(latitude,longitude,lat,lon)
+
     if dist <= 5:
         # send TOK
         sentTokens = user.sentTokens
         now = datetime.datetime.now()
         sentTokens[curr_token] = {'datetime':now}
         ans = 'TOK:' + str(curr_token) + ":\n"
-        #send_message(ans, client_address[0], client_address[1],user)
         try:
-            send_message(ans, client_address[0], 60000,user)
+            send_message(ans, client_address[0], own_port,user)
         except socket.error:
             print("User Unreachable")
 
+# when receiving a token we will save it with current location and also send one to this user
 def treat_tok(client_address,o_tok,user):
-    
     curr_token = user.actualToken
     curr_loc = user.actualLoc
     recvTokens = user.recvTokens
@@ -122,16 +120,15 @@ def treat_tok(client_address,o_tok,user):
     now = datetime.datetime.now()
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
 
-    
     sentTokens[curr_token] = {'datetime':now}
 
     ans = "RTOK:" + str(curr_token) + ":\n"
-    #send_message(ans, client_address[0], client_address[1],user)
     try:
-        send_message(ans, client_address[0], 60000,user)
+        send_message(ans, client_address[0], own_port,user)
     except socket.error:
         print("User Unreachable")
 
+# when receiving a token we will save it with current location
 def treat_rtok(client_address, o_tok,user):
     curr_loc = user.actualLoc
     recvTokens = user.recvTokens
@@ -139,9 +136,8 @@ def treat_rtok(client_address, o_tok,user):
     now = datetime.datetime.now()
     recvTokens[o_tok] = {'location':curr_loc,'datetime':now}
 
+# when receiving a code from the sns we will save it and send it to the server with the tokens sent in the last 14 days
 def treat_cod(client_address,sns_code, user):
-    global I_14_DAYS_IN_SECONDS, proxy_IP, proxy_port
-
     sentTokens = user.sentTokens
 
     print("You received a code from SNS due to your positive COVID test: " + sns_code + ".")
@@ -151,36 +147,31 @@ def treat_cod(client_address,sns_code, user):
     now = datetime.datetime.now()
     for key in sentTokens:
         delta = now - sentTokens[key]['datetime']
-
-        """if(delta > I_14_DAYS_IN_SECONDS):
-            sentTokens.pop(key)"""
         if(delta > datetime.timedelta(days = 14)):
             sentTokens.pop(key)
 
 
-    #ans = "POS:" + str(sns_code) + ":"
+    # ans = "POS:" + str(sns_code) + ":" + (token:)* + ":\n"
     ans = "POS:" + sns_code + ":"
     for tok in sentTokens:
         ans += str(tok) + ':'
     ans = ans + "\n"
     cipher_ans = encrypt(ans)
-    print("send cod")
     try:
         send_message(cipher_ans, proxy_IP, proxy_port, user, False)
     except socket.error:
         print("Proxy Unreachable")
         os._exit(1)
 
+# send messages to the server in order to camouflage POS messages
 def send_negative(user):
-    global quit_program, proxy_IP, proxy_port
-
     itt = 0
     length = 0
+    # split sleep into several so as not to delay the closure of the app
     while not quit_program:
         if itt == 0:
             ans = "NEG:\n"
             cipher_ans = encrypt(ans)
-            print("send negative")
             try:
                 send_message(cipher_ans, proxy_IP, proxy_port, user, False)
             except socket.error:
@@ -192,24 +183,16 @@ def send_negative(user):
             itt = (itt +1)%6
             time.sleep(length)
 
+# check if infected tokens were received
 def treat_con(client_address,server_tokens,user):
-
-    global I_14_DAYS_IN_SECONDS
-
-    
     recvTokens = user.recvTokens
 
     # filter recvTokens maintaining only the last 14 days
     now = datetime.datetime.now()
     for key in recvTokens:
         delta = now - recvTokens[key]['datetime']
-
-        """if(delta > I_14_DAYS_IN_SECONDS):
-            recvTokens.pop(key)"""
-
         if(delta > datetime.timedelta(days = 14)):
             recvTokens.pop(key)
-
 
     positive_situations = []
 
@@ -223,15 +206,14 @@ def treat_con(client_address,server_tokens,user):
             dt = positive_situations[i]['datetime']
             print("\tLocation:" + positive_situations[i]['location'] + ". Hour - Day/Month/Year: " + str(dt.hour)+ " - " + str(dt.day) + "/" + str(dt.month) + "/" + str(dt.year) + ".")
 
+# checks the type of message received to handle it properly
 def treat_message(msg, client_address, user):
-
     # parse message
     msg_args = msg.split(':')
 
     if(msg_args[-1] != '\n'): # wrong formatting - ignore
         return
 
-    # LOC E RECEBIDO NO PORTO 60001 POR LIGACOES UDP 
     if(msg_args[0] == 'LOC'): # LOC:<lat>:<lon>:\n
         o_lat, o_lon = 0, 0
         try:
@@ -242,7 +224,7 @@ def treat_message(msg, client_address, user):
             return
         treat_loc(client_address,o_lat,o_lon,user)
 
-    if(msg_args[0] == 'TOK'):
+    if(msg_args[0] == 'TOK'): # TOK:<token>:\n
         o_tok = 0
         try:
             assert(len(msg_args) == 3)
@@ -251,7 +233,7 @@ def treat_message(msg, client_address, user):
             return
         treat_tok(client_address,o_tok,user)
 
-    elif(msg_args[0] == 'RTOK'):
+    elif(msg_args[0] == 'RTOK'): # RTOK:<token>:\n
         o_tok = 0
         try:
             assert(len(msg_args) == 3)
@@ -259,29 +241,25 @@ def treat_message(msg, client_address, user):
         except:
             return
         treat_rtok(client_address,o_tok,user)
-    elif(msg_args[0] == 'COD'):
+
+    elif(msg_args[0] == 'COD'): # COD:<sns_cod>:\n
         sns_code = 0
         try:
             assert(len(msg_args) == 3)
-            #sns_code = int(msg_args[1])
             sns_code = msg_args[1]
         except:
             return
-
         treat_cod(client_address,sns_code,user)
 
 
-    elif(msg_args[0] == 'CON'):
+    elif(msg_args[0] == 'CON'): # CON:<token>*:\n
         server_tokens = []
         for i in range(1,len(msg_args)-1):
             server_tokens += [msg_args[i]]
-        
-
         treat_con(client_address,server_tokens,user)
 
+# wait for connections on the port 60000
 def listen_all_tcp(own_port, user):
-    global quit_program
-
     HOST = get_ip_address('enp0s3')
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -327,72 +305,11 @@ def listen_all_tcp(own_port, user):
     for thr in threads_lst:
         thr.join()
 
-'''
-def listen_loc(own_port_b, user):
-    global quit_program
-    port = own_port_b
-    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-
-    # Enable broadcasting mode
-    client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
-    client.bind(("", port))
-
-    
-    threads_lst = []
-
-    while not quit_program:
-        client.settimeout(2)
-        data, addr = None,None
-        try:
-            data, addr = client.recvfrom(1024)
-        except:
-            continue
-
-        if addr[0] == get_ip_address('enp0s3'):
-            continue
-
-        data = data.decode('utf-8')
-        print("received message: %s"%data)
-
-        data_args = data.split(':')
-
-        if(len(data_args) != 4 or data_args[-1] != '\n' or data_args[0] != 'LOC'): # invalid format
-            continue
-        
-        lat, lon = 0,0
-        try:
-            lat = float(data_args[1])
-            lon = float(data_args[2])
-        except:
-            continue # invalid format
-
-
-        t1 = threading.Thread(target= treat_loc, args=(addr,lat,lon,user,))
-        t1.start()
-
-        idx_t = 0
-        while idx_t < len(threads_lst):
-            if(threads_lst[idx_t].is_alive()):
-                idx_t += 1
-            else:
-                threads_lst[idx_t].join()
-                threads_lst.pop(idx_t)
-
-        threads_lst += [t1]
-    
-    
-    for thr in threads_lst:
-        thr.join()
-'''
-
+# receive geographic coordinates and return information about the location
 def location_by_coord(latitude, longitude):
         coord = str(latitude) + ", " + str(longitude)
 
         location = Nomi_locator.reverse(coord)
-        #location = "beja"
 
         locationInfo = ""
         if 'road' in location.raw['address'].keys():
@@ -442,7 +359,6 @@ class User:
     def getOthersIPs(self):
         return self.others_ips
     
-
 def set_loc(user):
     user.createNewToken()
     print("Set your actual location")
@@ -457,7 +373,7 @@ def get_ip_address(ifname):
         struct.pack('256s', bytes(ifname[:15], 'utf-8'))
     )[20:24])
 
-
+# register user on the server
 def registerUser(user,passw):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -482,7 +398,7 @@ def registerUser(user,passw):
     server.bind((HOST, own_port))
     server.listen(1)
 
-    client.send(msg.encode("utf-8"))  #só envia aqui para já estar à espera da resposta
+    client.send(msg.encode("utf-8"))  # send REG msg after already listening to the answer
     client.close()
 
     connection, client_address = server.accept()
@@ -497,12 +413,10 @@ def registerUser(user,passw):
     connection.close()
     server.close()
     
-    
     msg_args = msg.split(":")
     if(msg_args[-1] != "\n"):
         print("Error: wrong format answer from server to register message.")
         os._exit(1)
-    
     if(msg_args[0] == 'REF' and len(msg_args) == 3):
         print("Error: register refused.",msg_args[1])
         os._exit(1)
@@ -513,7 +427,7 @@ def registerUser(user,passw):
     user.registered = True
     informSns(user)
     
-
+# login user on the server
 def loginUser(user,passw):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -539,7 +453,6 @@ def loginUser(user,passw):
 
     client.send(msg.encode("utf-8"))
     client.close()
-    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
     connection, client_address = server.accept()
     msg = ""
@@ -553,13 +466,11 @@ def loginUser(user,passw):
     connection.close()
     server.close()
     
-    
     msg_args = msg.split(":")
     
     if(msg_args[-1] != "\n"):
         print("Error: wrong format answer from server to login message.")
         os._exit(1)
-    
     if(msg_args[0] == 'LOF' and len(msg_args) == 3):
         print("Error: login refused.",msg_args[1])
         os._exit(1)
@@ -567,10 +478,12 @@ def loginUser(user,passw):
         print("Error: wrong format answer from server to log in")
         os._exit(1)
 
+    # get ips from other users
     user.others_ips = []
     for i in range(1,len(msg_args)-1):
         user.appendIP(msg_args[i])
 
+# logout user on the server
 def logoutUser(user):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -578,7 +491,6 @@ def logoutUser(user):
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
     msg = "LGT:\n"
-
     try:
         client.connect((server_IP, server_port))
     except socket.error:
@@ -587,9 +499,8 @@ def logoutUser(user):
 
     client.send(msg.encode("utf-8"))
     client.close()
-    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
     
-
+# send current geolocation to all users
 def send_loc(user: User, others_port):
     msg = "LOC:" + str(user.latitude) + ":" + str(user.longitude) + ":\n"
 
@@ -607,7 +518,6 @@ def send_loc(user: User, others_port):
 def usage():
     sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
     sys.exit(1)
-
 
 if __name__ == '__main__':
     if len(sys.argv) != 1 and len(sys.argv) != 2:
@@ -667,22 +577,8 @@ if __name__ == '__main__':
         while(":" in password):
             print("Invalid password, try again ...")
             password = stdiomask.getpass(prompt="Password: ")
-    
-    
-    #own_port = int(input("own port: "))
-    #other_port = int(input("other port: "))
-
-    #own_port_b = int(input("own port for broadcast: "))
-    #other_port_b = int(input("other port for broadcast: "))
-
-    own_port = 60000
-    other_port = 60000
-    own_port_b = 60001
-    other_port_b = 60001
-
 
     # register in server
-
     if(not user.registered):
         registerUser(user, password)
     loginUser(user, password)
@@ -695,10 +591,10 @@ if __name__ == '__main__':
     t2 = threading.Thread(target = send_negative, args = (user,) )
     t2.start()
 
-    time.sleep(1) #se houver contato logo temos que já estar à escuta
+    # we have to be listening before sending the location because we can receive a token
+    time.sleep(1)
 
-    send_loc(user,other_port)
-    # udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
+    send_loc(user,own_port)
 
     command = 0
     while command != 4:
@@ -717,7 +613,7 @@ if __name__ == '__main__':
             print("Invalid command")
         elif command == 1:
             set_loc(user)
-            send_loc(user,other_port)
+            send_loc(user,own_port)
         elif command == 2:
             print("Actual location")
             print("Latitude: " + str(user.latitude))

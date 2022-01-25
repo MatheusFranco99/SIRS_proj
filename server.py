@@ -20,7 +20,11 @@ import os
 sns_DB = [] # sns codes
 proxy_IP = '192.168.0.4'
 sns_IP = '192.168.0.4'
-# users = ['192.168.0.2', '192.168.0.3']  # address of all active users
+
+my_IP = '192.168.0.1'
+my_port = 60000
+
+users_port = 60000
 
 users_reg = []
 users_logged = []
@@ -38,16 +42,14 @@ with open("server.key", "rb") as k:
 with open("public_sns.key", "rb") as k:
     sns_public_key = RSA.importKey(k.read())
 
-
+# decrypt data with the private key (server private key)
 def decrypt_data(data):
-    global key_priv
     print(data)
     decipher = PKCS1_v1_5.new(key_priv)
     return decipher.decrypt(data, None)
 
+# checks if the signature is valid for the message msg
 def validate_signature(msg, signature):
-    global sns_public_key
-
     digest = SHA256.new()
     digest.update(msg)
 
@@ -58,15 +60,13 @@ def validate_signature(msg, signature):
         #check freshness
         timestamp1 = datetime.datetime.now().timestamp()
         timestamp2 = float(msg.split(b":")[0])
-        if timestamp1 - timestamp2 < 5:     #5 segundos
+        if timestamp1 - timestamp2 < 5:     #5 seconds
             return True
     
     return False
 
-
-
-# RECEBE:
-# do SNS quando user esta positivo pra covid19
+# RECEIVE:
+# from SNS when user is positive for covid19
 # COD:<sns_code>:\n"
 def received_cod(sns_code):
     print("Handling sns code")
@@ -75,12 +75,12 @@ def received_cod(sns_code):
     sns_DB.append(sns_code)
     print("----")
     
-# RECEBE:
-# De um user positivo
+# RECEIVE:
+# from a positive user
 # POS:<sns_code>:(<encrypt_token>:)*\n
 
-# ENVIA:
-# do server quando alguem tem covid
+# SEND:
+# from server to all users the infected tokens
 # CON:(<token>:)*\n
 def received_pos(sns_code, tokens):
     print("Handling positive user")
@@ -98,7 +98,7 @@ def received_pos(sns_code, tokens):
         client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
         try:
-            client.connect((ip, 60000))
+            client.connect((ip, users_port))
         except socket.error:
             print("User Unreachable")
             continue
@@ -109,12 +109,12 @@ def received_pos(sns_code, tokens):
 
 
 
-# RECEBE:
-# De um user que quer se registar
+# RECEIVE:
+# from a user who wants to register
 # REG:\n
 
-# ENVIA:
-# lista de ips logados
+# SEND:
+# list of logged in ips
 # REA:\n
 def received_reg(ip_user,passw,name):
     print("Registering user")
@@ -148,7 +148,7 @@ def received_reg(ip_user,passw,name):
         else:
             users_reg.append(ip_user)
 
-            salt = os.urandom(16) #salt 128 bits
+            salt = os.urandom(16) # salt 128 bits
             hash_object = hashlib.sha512(passw.encode("utf-8") + salt)
             hex_dig = hash_object.hexdigest()
             users_salt[ip_user] = salt
@@ -164,7 +164,7 @@ def received_reg(ip_user,passw,name):
     client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
     try:
-        client.connect((ip_user, 60000))
+        client.connect((ip_user, users_port))
     except socket.error:
         print("User Unreachable")
         return
@@ -173,12 +173,12 @@ def received_reg(ip_user,passw,name):
     
     print("----")
 
-# RECEBE:
-# De um user que quer fazer login
+# RECEIVE:
+# from a user who wants to login
 # LOG:\n
 
-# ENVIA:
-# lista de ips logados
+# SEND:
+# list of ips logged in
 # LOA:(<ips>:)*\n
 def received_log(ip_user,passw):
     print("Logging in user")
@@ -209,7 +209,7 @@ def received_log(ip_user,passw):
     client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
     try:
-        client.connect((ip_user, 60000))
+        client.connect((ip_user, users_port))
     except socket.error:
         print("User Unreachable")
         return
@@ -219,8 +219,8 @@ def received_log(ip_user,passw):
     print("----")
 
 
-# RECEBE:
-# De um user que fez logout
+# RECEIVE:
+# from a user who logged out
 # LGT:\n
 def received_lgt(ip_user):
     print("Logging out user")
@@ -231,12 +231,14 @@ def received_lgt(ip_user):
     print("----")
 
 
-    
+# check what type of message was received and handle it in the corresponding way
 def handle_message(msg, client_addr, ciphertext = False):
 
+    # if it is encrypted text check if it comes from sns or proxy
     if ciphertext:
         cod_msg = b':CIPHER_COD_MSG:'
         if cod_msg in msg:
+            # sns msg
             ciphered_args = msg.split(cod_msg)
 
             secret_enc = ciphered_args[0]
@@ -257,6 +259,7 @@ def handle_message(msg, client_addr, ciphertext = False):
             print("Received secure msg: " + msg)
 
         else:
+            # proxy msg
             msg = decrypt_data(msg).decode()
             print("Received: " + msg)
 
@@ -266,8 +269,7 @@ def handle_message(msg, client_addr, ciphertext = False):
     if(msg_args[-1] != '\n'): # wrong formatting - ignore
         return
 
-    # check what type of message was received and handle it in the corresponding way
-    if(msg_args[0] == 'COD'):
+    if(msg_args[0] == 'COD'): # COD:<sns_cod>:\n
         sns_code = ""
         try:
             assert(len(msg_args) == 3)
@@ -276,7 +278,7 @@ def handle_message(msg, client_addr, ciphertext = False):
             return
         received_cod(sns_code)
 
-    elif(msg_args[0] == 'POS'):
+    elif(msg_args[0] == 'POS'): # POS:<sns_cod>:<tokens>*:\n
         sns_code = ""
         tokens = []
         try:
@@ -291,7 +293,7 @@ def handle_message(msg, client_addr, ciphertext = False):
             return
         received_pos(sns_code, tokens)
     
-    elif(msg_args[0] == 'REG'):
+    elif(msg_args[0] == 'REG'): # REG:<name>:<password>*:\n
         user_ip = ''
         passw = ""
         name = ""
@@ -304,7 +306,7 @@ def handle_message(msg, client_addr, ciphertext = False):
             return
         received_reg(user_ip,passw,name)
     
-    elif(msg_args[0] == 'LOG'):
+    elif(msg_args[0] == 'LOG'): # LOG:<password>:\n
         user_ip = ''
         passw = ""
         try:
@@ -314,7 +316,8 @@ def handle_message(msg, client_addr, ciphertext = False):
         except:
             return
         received_log(user_ip,passw)
-    elif(msg_args[0] == 'LGT'):
+
+    elif(msg_args[0] == 'LGT'): # LGT:\n
         user_ip = ''
         try:
             assert(len(msg_args) == 2)
@@ -322,19 +325,20 @@ def handle_message(msg, client_addr, ciphertext = False):
         except:
             return
         received_lgt(user_ip)
+
     elif(msg_args[0] == 'NEG'):
         print("Negative message received")
+
     else:
         # message not in the server's protocol
         print("Message received unknown: " + msg)
 
 
-
+# wait for connections on the port 60000
 def listen(server_port):
-    global proxy_IP, quit_program
     print("Server listening...")
 
-    HOST = "192.168.0.1"
+    HOST = my_IP
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -358,7 +362,7 @@ def listen(server_port):
         except:
             continue
 
-        if clientAddress[0] == proxy_IP or clientAddress[0] == sns_IP:  #proxy sends ciphertext, can't decode
+        if clientAddress[0] == proxy_IP or clientAddress[0] == sns_IP:  # proxy and sns sends ciphertext, can't decode
             msg = b''
             while True:
                 data = clientConnection.recv(1024)
@@ -428,7 +432,7 @@ if __name__ == "__main__":
         users_name = pickle.load(picklefile)
         picklefile.close()
 
-    SERVER_PORT =  60000
+    SERVER_PORT = my_port
     
     # cria thread listen
     t1 = threading.Thread(target = listen, args = (SERVER_PORT,) )
@@ -436,7 +440,6 @@ if __name__ == "__main__":
 
     input("Enter anything to quit:")
     quit_program = True
-
 
     t1.join()
 

@@ -20,16 +20,24 @@ from Crypto.Signature import PKCS1_v1_5 as PKCS_SIGN
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 
+my_IP = '192.168.0.4'
+my_port = 60000
+
+server_port = 60000
+users_port = 60000
+
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
 
 with open("sns.key", "rb") as k:
     key_priv = RSA.importKey(k.read())
 
+# encypt data with the server public key
 def encrypt(data):
     cipher = PKCS1_v1_5.new(public_server_key)
     return cipher.encrypt(data)
 
+# make a digital signature of msg with my private key
 def digital_signature(msg):
     digest = SHA256.new()
     digest.update(msg)
@@ -41,11 +49,7 @@ names = {}
 
 quit_program = False
 
-# ENVIA:
-
-# Pra user e server: codigo quando alguem testa positivo
-# COD:<sns_code>:\n
-
+# generate a sns_code
 def get_sns_code():
     letters = string.ascii_uppercase + string.digits
     code = ''.join(random.choice(letters) for i in range(8))
@@ -59,6 +63,7 @@ def get_ip_address(ifname):
         struct.pack('256s', bytes(ifname[:15], 'utf-8'))
     )[20:24])
 
+# check what type of message was received and handle it in the corresponding way
 def treat_message(msg, client_address):
     global names
 
@@ -68,7 +73,8 @@ def treat_message(msg, client_address):
     if(msg_args[-1] != '\n'): # wrong formatting - ignore
         return
 
-    if(msg_args[0] == 'NAME'):
+    # associate Username to ip
+    if(msg_args[0] == 'NAME'): # NAME:<name>:\n
         name = ""
         ip = ""
         try:
@@ -83,11 +89,9 @@ def treat_message(msg, client_address):
         else:
             print("Name already exist")
 
-
+# wait for connections on the port 60000
 def listen(own_port):
-    global quit_program
-
-    HOST = get_ip_address('enp0s3')
+    HOST = my_IP
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -133,7 +137,7 @@ def listen(own_port):
 
 if __name__ == "__main__":
 
-    t1 = threading.Thread(target = listen, args = (60000,) )
+    t1 = threading.Thread(target = listen, args = (my_port,) )
     t1.start()
     
     command = 0
@@ -149,11 +153,13 @@ if __name__ == "__main__":
         if command < 1 or command > 2:
             print("Invalid command")
         elif command == 1:
+            # SEND:
+            # to user and server: code when the user is positivie to covid19
+            # COD:<sns_code>:\n
             user_name = input("Infected Name: ")
             if user_name not in names:
                 print("Name doesn't exist")
                 continue
-            user_port = 60000
 
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -163,7 +169,7 @@ if __name__ == "__main__":
             msg = 'COD:' + sns_code + ":\n"
 
             try:
-                client.connect(("192.168.0.1", 60000))
+                client.connect(("192.168.0.1", server_port))
             except socket.error:
                 print("Server Unreachable")
                 os._exit(1)
@@ -177,6 +183,7 @@ if __name__ == "__main__":
             secret = secret_key + b':INITIALVECTOR:' + iv
             secret_enc = encrypt(secret)
 
+            # ensure freshness
             current_time = datetime.datetime.now()
             time_stamp = current_time.timestamp()
             fresh_msg = '' + str(time_stamp) + ':'
@@ -195,13 +202,13 @@ if __name__ == "__main__":
             client = ssl.wrap_socket(client, keyfile='sns.key', certfile='sns.crt')
             
             try:
-                client.connect((names[user_name], user_port))
+                client.connect((names[user_name], users_port))
             except socket.error:
                 print("User Unreachable")
                 continue
             client.send(msg.encode("utf-8"))
             client.close()
-            print("To (host,port): " + str(names[user_name]) + "," + str(user_port) + ". Sent: " + msg)
+            print("To (host,port): " + str(names[user_name]) + "," + str(users_port) + ". Sent: " + msg)
         
         quit_program = True
         t1.join()
