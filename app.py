@@ -69,7 +69,11 @@ def encrypt(data):
 
 def informSns(user):
     msg = "NAME:" + user.name + ":\n"
-    send_message(msg,sns_IP,sns_port,user)
+    try:
+        send_message(msg,sns_IP,sns_port,user)
+    except socket.error:
+        print("SNS Unreachable")
+        os._exit(1)
 
 def send_message(msg, host, port, user, encode = True):
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,6 +82,7 @@ def send_message(msg, host, port, user, encode = True):
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
     client.connect((host, port))
+    
     if encode:
         client.send(msg.encode("utf-8"))
     else:
@@ -102,7 +107,10 @@ def treat_loc(client_address,lat,lon,user):
         sentTokens[curr_token] = {'datetime':now}
         ans = 'TOK:' + str(curr_token) + ":\n"
         #send_message(ans, client_address[0], client_address[1],user)
-        send_message(ans, client_address[0], 60000,user)
+        try:
+            send_message(ans, client_address[0], 60000,user)
+        except socket.error:
+            print("User Unreachable")
 
 def treat_tok(client_address,o_tok,user):
     
@@ -119,7 +127,10 @@ def treat_tok(client_address,o_tok,user):
 
     ans = "RTOK:" + str(curr_token) + ":\n"
     #send_message(ans, client_address[0], client_address[1],user)
-    send_message(ans, client_address[0], 60000,user)
+    try:
+        send_message(ans, client_address[0], 60000,user)
+    except socket.error:
+        print("User Unreachable")
 
 def treat_rtok(client_address, o_tok,user):
     curr_loc = user.actualLoc
@@ -154,7 +165,11 @@ def treat_cod(client_address,sns_code, user):
     ans = ans + "\n"
     cipher_ans = encrypt(ans)
     print("send cod")
-    send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+    try:
+        send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+    except socket.error:
+        print("Proxy Unreachable")
+        os._exit(1)
 
 def send_negative(user):
     global quit_program, proxy_IP, proxy_port
@@ -166,7 +181,11 @@ def send_negative(user):
             ans = "NEG:\n"
             cipher_ans = encrypt(ans)
             print("send negative")
-            send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+            try:
+                send_message(cipher_ans, proxy_IP, proxy_port, user, False)
+            except socket.error:
+                print("Proxy Unreachable")
+                os._exit(1)
             length = random.randint(1,15)/5
             itt = itt+1
         else:
@@ -447,10 +466,11 @@ def registerUser(user,passw):
 
     msg = "REG:" + user.name + ":" + passw + ":\n"
 
-    client.connect((server_IP, server_port))
-    client.send(msg.encode("utf-8"))
-    client.close()
-    #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+    try:
+        client.connect((server_IP, server_port))
+    except socket.error:
+        print("Server Unreachable")
+        os._exit(1)
 
     HOST = get_ip_address('enp0s3')
 
@@ -461,6 +481,9 @@ def registerUser(user,passw):
     )
     server.bind((HOST, own_port))
     server.listen(1)
+
+    client.send(msg.encode("utf-8"))  #só envia aqui para já estar à espera da resposta
+    client.close()
 
     connection, client_address = server.accept()
     msg = ""
@@ -478,14 +501,14 @@ def registerUser(user,passw):
     msg_args = msg.split(":")
     if(msg_args[-1] != "\n"):
         print("Error: wrong format answer from server to register message.")
-        exit(0)
+        os._exit(1)
     
     if(msg_args[0] == 'REF' and len(msg_args) == 3):
         print("Error: register refused.",msg_args[1])
-        exit(0)
+        os._exit(1)
     elif (not (msg_args[0] == 'REA' and len(msg_args) == 2)):
         print("Error: wrong format answer from server to register message.")
-        exit(0)
+        os._exit(1)
 
     user.registered = True
     informSns(user)
@@ -508,7 +531,12 @@ def loginUser(user,passw):
     server.bind((HOST, own_port))
     server.listen(1)
 
-    client.connect((server_IP, server_port))
+    try:
+        client.connect((server_IP, server_port))
+    except socket.error:
+        print("Server Unreachable")
+        os._exit(1)
+
     client.send(msg.encode("utf-8"))
     client.close()
     #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
@@ -530,14 +558,14 @@ def loginUser(user,passw):
     
     if(msg_args[-1] != "\n"):
         print("Error: wrong format answer from server to login message.")
-        exit(0)
+        os._exit(1)
     
     if(msg_args[0] == 'LOF' and len(msg_args) == 3):
         print("Error: login refused.",msg_args[1])
-        exit(0)
+        os._exit(1)
     elif (not (msg_args[0] == 'LOA' and msg_args[-1] == '\n')):
         print("Error: wrong format answer from server to log in")
-        exit(0)
+        os._exit(1)
 
     user.others_ips = []
     for i in range(1,len(msg_args)-1):
@@ -551,7 +579,12 @@ def logoutUser(user):
 
     msg = "LGT:\n"
 
-    client.connect((server_IP, server_port))
+    try:
+        client.connect((server_IP, server_port))
+    except socket.error:
+        print("Server Unreachable")
+        os._exit(1)
+
     client.send(msg.encode("utf-8"))
     client.close()
     #print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
@@ -594,8 +627,17 @@ if __name__ == '__main__':
 
     if len(sys.argv) == 1:
         print("Register as first time user -> ")
+
         name = input("Username: ")
-        password = stdiomask.getpass(prompt="Password (at least 10 characters, with at least one capital letter, one small and one number):")
+        while(not name or name.isspace() or ":" in name):
+            print("Username can't be empty and can't use the character \':\'")
+            name = input("Username: ")
+
+        password = stdiomask.getpass(prompt="Password (at least 10 characters, with at least one capital letter, one small and one number): ")
+        while(":" in password):
+            print("Sorry, you can't use the character \':\' in your password")
+            password = stdiomask.getpass(prompt="Password: ")
+
         print("Set your actual location")
         latitude = float(input("Latitude: "))
         longitude = float(input("Longitude: "))
@@ -621,7 +663,10 @@ if __name__ == '__main__':
         picklefile.close()
 
         print("Login ->")
-        password = input("Password:")
+        password = stdiomask.getpass(prompt="Password: ")
+        while(":" in password):
+            print("Invalid password, try again ...")
+            password = stdiomask.getpass(prompt="Password: ")
     
     
     #own_port = int(input("own port: "))
@@ -656,34 +701,29 @@ if __name__ == '__main__':
     # udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
 
     command = 0
-    while command != 6:
+    while command != 4:
         print("-=[ \'Covid Contacts Trace\' Menu ]=-")
-        print("1 - Set user name")
-        print("2 - Set actual location")
-        print("3 - Show actual location")
-        print("4 - Insert SNS code")
-        print("5 - Check codes sent by SNS")
-        print("6 - Quit")
-        command = int(input().split(' ')[0])
+        print("1 - Set actual location")
+        print("2 - Show actual location")
+        print("3 - Check codes sent by SNS")
+        print("4 - Quit")
+        
+        try:
+            command = int(input().split(' ')[0])
+        except:
+            continue
 
-        if command < 1 or command > 7:
+        if command < 1 or command > 4:
             print("Invalid command")
         elif command == 1:
-            user.name = input("Insert new name: ")
-        elif command == 2:
             set_loc(user)
             send_loc(user,other_port)
-            #udp_server.broadcast_loc(user.latitude, user.longitude, other_port_b)
-        elif command == 3:
+        elif command == 2:
             print("Actual location")
             print("Latitude: " + str(user.latitude))
             print("Longitude: " + str(user.longitude))
-        elif command == 4:
-            pass
-        elif command == 5:
+        elif command == 3:
             user.list_sns_codes()
-        elif command == 7:
-            print(user.getOthersIPs())
 
     quit_program = True
 

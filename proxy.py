@@ -18,7 +18,11 @@ def send_msg(msg):
 
     client = ssl.wrap_socket(client, keyfile="proxy.key", certfile="proxy.crt")
 
-    client.connect((server_IP, server_port))
+    try:
+        client.connect((server_IP, server_port))
+    except socket.error:
+        print("Server Unreachable")
+        exit(0)
     client.send(msg)
     client.close()
 

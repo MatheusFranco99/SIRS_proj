@@ -97,7 +97,11 @@ def received_pos(sns_code, tokens):
         client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
-        client.connect((ip, 60000))
+        try:
+            client.connect((ip, 60000))
+        except socket.error:
+            print("User Unreachable")
+            continue
         client.send(msg.encode("utf-8"))
         client.close()
     
@@ -151,8 +155,7 @@ def received_reg(ip_user,passw,name):
             users_password[ip_user] = hex_dig
             users_name.append(name)
         
-            msg = 'REA:'
-            msg += '\n'
+            msg = 'REA:\n'
 
     print("msg: " + msg)
 
@@ -160,7 +163,11 @@ def received_reg(ip_user,passw,name):
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
-    client.connect((ip_user, 60000))
+    try:
+        client.connect((ip_user, 60000))
+    except socket.error:
+        print("User Unreachable")
+        return
     client.send(msg.encode("utf-8"))
     client.close()
     
@@ -201,7 +208,11 @@ def received_log(ip_user,passw):
     client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     client = ssl.wrap_socket(client, keyfile='server.key', certfile='server.crt')
 
-    client.connect((ip_user, 60000))
+    try:
+        client.connect((ip_user, 60000))
+    except socket.error:
+        print("User Unreachable")
+        return
     client.send(msg.encode("utf-8"))
     client.close()
     

@@ -141,7 +141,10 @@ if __name__ == "__main__":
         print("-=[ \'SNS\' Menu ]=-")
         print("1 - Send code to positive person")
         print("2 - Quit")
-        command = int(input().split(' ')[0])
+        try:
+            command = int(input().split(' ')[0])
+        except:
+            continue
 
         if command < 1 or command > 2:
             print("Invalid command")
@@ -159,7 +162,11 @@ if __name__ == "__main__":
             sns_code = get_sns_code()
             msg = 'COD:' + sns_code + ":\n"
 
-            client.connect(("192.168.0.1", 60000))
+            try:
+                client.connect(("192.168.0.1", 60000))
+            except socket.error:
+                print("Server Unreachable")
+                os._exit(1)
             
             #generating a symmetric key
             AES_key_length = 16
@@ -187,7 +194,11 @@ if __name__ == "__main__":
             client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             client = ssl.wrap_socket(client, keyfile='sns.key', certfile='sns.crt')
             
-            client.connect((names[user_name], user_port))
+            try:
+                client.connect((names[user_name], user_port))
+            except socket.error:
+                print("User Unreachable")
+                continue
             client.send(msg.encode("utf-8"))
             client.close()
             print("To (host,port): " + str(names[user_name]) + "," + str(user_port) + ". Sent: " + msg)
