@@ -1,16 +1,11 @@
-from atexit import unregister
 import sys
 from geopy.geocoders import Nominatim
 import socket, ssl
 
 import threading
-import comm
 import random
 
 import stdiomask
-
-import udp_server
-import udp_client
 
 import datetime
 import time
@@ -41,9 +36,19 @@ sns_port = 60000
 own_port = 60000
 
 quit_program = False
+verbose_mode = False
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
+
+# function that print information when the program runs in verbose mode
+def print_console(*argv):
+    if verbose_mode:
+        uniq = ""
+        for arg in argv:
+            uniq += str(arg) + " "
+        uniq = uniq[:-1]
+        print(uniq)
 
 # receives two geometric coordinates and calculates the distance between them
 def calc_distance(lat1,lon1,lat2,lon2):
@@ -77,6 +82,10 @@ def send_message(msg, host, port, user, encode = True):
 
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
+    if encode:
+        print_console("--Send message--")
+        print_console("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
+
     client.connect((host, port))
     
     if encode:
@@ -85,9 +94,6 @@ def send_message(msg, host, port, user, encode = True):
         client.send(msg)
 
     client.close()
-
-    if encode:
-        print("To (host,port): " + str(host) + "," + str(port) + ". Sent: " + msg)
 
 # checks if we are in the vicinity of the user who sent the message
 def treat_loc(client_address,lat,lon,user):
@@ -150,13 +156,16 @@ def treat_cod(client_address,sns_code, user):
         if(delta > datetime.timedelta(days = 14)):
             sentTokens.pop(key)
 
-
     # ans = "POS:" + str(sns_code) + ":" + (token:)* + ":\n"
     ans = "POS:" + sns_code + ":"
     for tok in sentTokens:
         ans += str(tok) + ':'
     ans = ans + "\n"
     cipher_ans = encrypt(ans)
+
+    print_console("--Send message--")
+    print_console("To (host,port): " + str(proxy_IP) + "," + str(proxy_port) + ". Sent encrypted message: " + ans)
+
     try:
         send_message(cipher_ans, proxy_IP, proxy_port, user, False)
     except socket.error:
@@ -172,6 +181,10 @@ def send_negative(user):
         if itt == 0:
             ans = "NEG:\n"
             cipher_ans = encrypt(ans)
+
+            print_console("--Send message--")
+            print_console("To (host,port): " + str(proxy_IP) + "," + str(proxy_port) + ". Sent encrypted message: " + ans)
+
             try:
                 send_message(cipher_ans, proxy_IP, proxy_port, user, False)
             except socket.error:
@@ -284,8 +297,10 @@ def listen_all_tcp(own_port, user):
             if not data:
                 break
             msg = msg + data
-        print("Received: ")
-        print(msg)
+
+        print_console("--Received message--")
+        print_console("From (host,port): " + str(client_address[0]) + "," + str(client_address[1]) + ". Sent: " + msg)
+
         connection.close()
 
 
@@ -382,6 +397,9 @@ def registerUser(user,passw):
 
     msg = "REG:" + user.name + ":" + passw + ":\n"
 
+    print_console("--Send message--")
+    print_console("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
+
     try:
         client.connect((server_IP, server_port))
     except socket.error:
@@ -408,8 +426,10 @@ def registerUser(user,passw):
         if not data:
             break
         msg = msg + data
-    print("Received: ")
-    print(msg)
+
+    print_console("--Received message--")
+    print_console("From (host,port): " + str(client_address[0]) + "," + str(client_address[1]) + ". Sent: " + msg)
+
     connection.close()
     server.close()
     
@@ -445,6 +465,9 @@ def loginUser(user,passw):
     server.bind((HOST, own_port))
     server.listen(1)
 
+    print_console("--Send message--")
+    print_console("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
+
     try:
         client.connect((server_IP, server_port))
     except socket.error:
@@ -461,8 +484,10 @@ def loginUser(user,passw):
         if not data:
             break
         msg = msg + data
-    print("Received: ")
-    print(msg)
+    
+    print_console("--Received message--")
+    print_console("From (host,port): " + str(client_address[0]) + "," + str(client_address[1]) + ". Sent: " + msg)
+
     connection.close()
     server.close()
     
@@ -491,6 +516,10 @@ def logoutUser(user):
     client = ssl.wrap_socket(client, keyfile=user.key, certfile=user.cert)
 
     msg = "LGT:\n"
+
+    print_console("--Send message--")
+    print_console("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
+
     try:
         client.connect((server_IP, server_port))
     except socket.error:
@@ -516,10 +545,17 @@ def send_loc(user: User, others_port):
         user.others_ips.remove(ip)
 
 def usage():
-    sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user.txt\n')
+    sys.stderr.write('Usage: python3 app.py\nor\nUsage: python3 app.py user_pickle\nFlag: [-v]\n')
     sys.exit(1)
 
 if __name__ == '__main__':
+
+    for arg in sys.argv:
+        if arg == "-v":
+            verbose_mode = True
+            sys.argv.remove(arg)
+            break
+
     if len(sys.argv) != 1 and len(sys.argv) != 2:
         usage()
 
@@ -623,16 +659,17 @@ if __name__ == '__main__':
 
     quit_program = True
 
-    print("Sent: ")
-    print(user.sentTokens)
-    print("Recv: ")
-    print(user.recvTokens)
+    print_console("Sent Tokens: ")
+    print_console(user.sentTokens)
+    print_console("Recv Tokens: ")
+    print_console(user.recvTokens)
     t1.join()
     t2.join()
     
     logoutUser(user)
 
     # STORES user
+    print_console("Stores user pickle")
     pickle_out_file = open(user.name,'wb')
     pickle.dump(user,pickle_out_file)
     pickle_out_file.close()

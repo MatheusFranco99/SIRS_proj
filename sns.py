@@ -4,7 +4,6 @@ import random
 import string
 import threading
 
-import hashlib
 import datetime
 
 import fcntl
@@ -23,14 +22,26 @@ from Crypto.Cipher import PKCS1_v1_5
 my_IP = '192.168.0.4'
 my_port = 60000
 
+server_IP = '192.168.0.1'
 server_port = 60000
 users_port = 60000
+
+verbose_mode = False
 
 with open("public_server.key", "rb") as k:
     public_server_key = RSA.importKey(k.read())
 
 with open("sns.key", "rb") as k:
     key_priv = RSA.importKey(k.read())
+
+# function that print information when the program runs in verbose mode
+def print_console(*argv):
+    if verbose_mode:
+        uniq = ""
+        for arg in argv:
+            uniq += str(arg) + " "
+        uniq = uniq[:-1]
+        print(uniq)
 
 # encypt data with the server public key
 def encrypt(data):
@@ -113,8 +124,10 @@ def listen(own_port):
             if not data:
                 break
             msg = msg + data
-        print("Received: ")
-        print(msg)
+        
+        print_console("--Received message--")
+        print_console("From (host,port): " + str(client_address[0]) + "," + str(client_address[1]) + ". Sent: " + msg)
+        
         connection.close()
 
 
@@ -135,7 +148,20 @@ def listen(own_port):
         thr.join()
 
 
+def usage():
+    sys.stderr.write('Usage: python3 sns.py\nFlag: [-v]\n')
+    sys.exit(1)
+
 if __name__ == "__main__":
+    
+    for arg in sys.argv:
+        if arg == "-v":
+            verbose_mode = True
+            sys.argv.remove(arg)
+            break
+    
+    if len(sys.argv) != 1:
+        usage()
 
     t1 = threading.Thread(target = listen, args = (my_port,) )
     t1.start()
@@ -168,8 +194,11 @@ if __name__ == "__main__":
             sns_code = get_sns_code()
             msg = 'COD:' + sns_code + ":\n"
 
+            print_console("--Send message--")
+            print_console("To (host,port): " + str(server_IP) + "," + str(server_port) + ". Sent: " + msg)
+
             try:
-                client.connect(("192.168.0.1", server_port))
+                client.connect((server_IP, server_port))
             except socket.error:
                 print("Server Unreachable")
                 os._exit(1)
@@ -200,6 +229,9 @@ if __name__ == "__main__":
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             client = ssl.wrap_socket(client, keyfile='sns.key', certfile='sns.crt')
+
+            print_console("--Send message--")
+            print_console("To (host,port): " + str(names[user_name]) + "," + str(users_port) + ". Sent: " + msg)
             
             try:
                 client.connect((names[user_name], users_port))
@@ -208,8 +240,7 @@ if __name__ == "__main__":
                 continue
             client.send(msg.encode("utf-8"))
             client.close()
-            print("To (host,port): " + str(names[user_name]) + "," + str(users_port) + ". Sent: " + msg)
         
-        quit_program = True
-        t1.join()
+    quit_program = True
+    t1.join()
     
