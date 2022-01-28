@@ -21,6 +21,8 @@ A aplicação foi programada em Python3 e foram utilizadas diversas bibliotecas 
 * [stdiomask](https://pypi.org/project/stdiomask/) - Módulo de Python para Inserir Senhas
 * [pickle](https://docs.python.org/3/library/pickle.html) - Serialização de Objetos Python
 
+É ainda utilizada a ferramenta [fwbuilder](http://fwbuilder.sourceforge.net/) para a criação e configuração de uma firewall.
+
 ## Vamos Começar
 
 
@@ -33,7 +35,7 @@ Recomendamos o uso de [Oracle VM VirtualBox](https://www.oracle.com/virtualizati
 
 No caso de seguirem estas recomendações aqui estão as [instruções](https://seedsecuritylabs.org/Labs_16.04/Documents/SEEDVM_VirtualBoxManual.pdf) fornecidas pela SEED Labs Project para instalar a imagem pré-criada na VirtualBox.
 
-Todas as VMs devem ter configuardo o "Adapter 1" e "Adapter 2" na sua seção "Network" de acordo com as seguintes imagens: 
+Todas as VMs devem ter configurado o "Adapter 1" e "Adapter 2" na sua seção "Network" de acordo com as seguintes imagens: 
 
 ![alt text](VM-network.png)
 
@@ -66,21 +68,39 @@ iface enp0s9 inet dhcp
 Na VM correspondente ao Servidor Central deve ser aberto o terminal e correr o programa ***server.py*** da seguinte forma:
 
 ```
-python3 server.py [-v] [pickle]
+$ python3 server.py [-v] [pickle]
 ```
 Pode ser passado como argumento a flag ***-v*** para correr em ***verbose mode*** e apresentar todas as mensagens recebidas e enviadas pelo Servidor Central e ainda ser passado um ***pickle*** caso seja pretendido carregar os dados de um Servidor Central terminado anteriormente.
 
 ![alt text](run-server.png)
 
+Vamos também nesta VM ativar a firewall que apenas permite conexões ao porto 60000 e que é utilizado pelo Servidor Central para recber comunicações. 
+Para instalar a firewall devem ser seguidos os seguintes passos:
+
+- Abrir uma nova consola na VM.
+
+- Instalar a ferramenta fwbuilder através do seguinte comando:
+    ```
+    $ sudo apt install fwbuilder
+    ```
+- Iniciar a ferramenta através do seguinte comando:
+    ```
+    $ sudo fwbuilder
+    ```
+
+- Abrir o ficheiro ***server-firewall.fwb*** e instalar a firewall.
+
+
+
 Na VM correspondente ao Proxy e Autoridade de Saúde deve ser aberto dois terminais em que num deles corremos o programa ***sns.py***:
 
 ```
-python3 sns.py [-v]
+$ python3 sns.py [-v]
 ```
 e no outro terminal corremos o programa ***proxy.py***:
 
 ```
-python3 proxy.py [-v]
+$ python3 proxy.py [-v]
 ```
 que tal como o programa ***server.py*** podemos utilizar a flag ***-v***.
 
@@ -93,7 +113,7 @@ Para demonstrar o funcionamento da aplicação vamos utilizar dois utilizadores 
 Em cada uma das VMs vamos correr o seguinte comando para iniciar a aplicação:
 
 ```
-python3 app.py [-v] [pickle]
+$ python3 app.py [-v] [pickle]
 ```
 
 Pode ser passado como argumento a flag ***-v*** para correr em ***verbose mode*** e ainda ser passado um ***pickle*** caso seja pretendido carregar os dados de um Utilizador que deu logout da aplicação anteriormente.
