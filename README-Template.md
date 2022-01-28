@@ -79,6 +79,12 @@ Para instalar a firewall devem ser seguidos os seguintes passos:
 
 - Abrir uma nova consola na VM.
 
+- Executar os seguintes comandos:
+    ```
+    $ sudo mkdir /etc/fw
+    $ sudo chmod a+rwx /etc/fw
+    ```
+
 - Instalar a ferramenta fwbuilder através do seguinte comando:
     ```
     $ sudo apt install fwbuilder
